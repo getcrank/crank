@@ -46,7 +46,7 @@ func New(brokerURL string, opts ...Option) (*Engine, *Client, error) {
 		return nil, nil, err
 	}
 
-	cl := client.New(store)
+	cl := client.New(store, cfg.Logger)
 	return eng, cl, nil
 }
 
@@ -81,7 +81,7 @@ func NewTestEngine(opts ...Option) (*Engine, *Client, *TestBroker, error) {
 		_ = b.Close()
 		return nil, nil, nil, err
 	}
-	cl := client.New(b)
+	cl := client.New(b, cfg.Logger)
 	return eng, cl, &TestBroker{b: b}, nil
 }
 
@@ -176,7 +176,7 @@ func QuickStart(configPath string) (*Engine, *Client, error) {
 		return nil, nil, err
 	}
 
-	cl := client.New(b)
+	cl := client.New(b, cfg.Logger)
 	client.SetGlobal(cl)
 	return eng, cl, nil
 }

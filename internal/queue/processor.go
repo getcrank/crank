@@ -192,6 +192,8 @@ func (p *Processor) fetcher() {
 				continue
 			}
 
+			p.log.Info("job dequeued", "jid", job.JID, "class", job.Class, "queue", q)
+
 			select {
 			case p.jobCh <- jobMsg{job: job, queue: q}:
 			case <-p.ctx.Done():
@@ -225,12 +227,12 @@ func (p *Processor) processJob(job *payload.Job, queue string) {
 
 	if err != nil {
 		job.State = payload.JobStateFailed
-		p.log.Error("job failed", "jid", job.JID, "err", err, "dur", duration)
+		p.log.Error("job failed", "jid", job.JID, "class", job.Class, "queue", queue, "err", err, "dur", duration)
 		p.emitEvent(JobEvent{Type: EventJobFailed, Job: job, Queue: queue, Duration: duration, Err: err})
 		p.handleFailure(job, err)
 	} else {
 		job.State = payload.JobStateSuccess
-		p.log.Info("job ok", "jid", job.JID, "dur", duration)
+		p.log.Info("job processed", "jid", job.JID, "class", job.Class, "queue", queue, "dur", duration)
 		p.emitEvent(JobEvent{Type: EventJobSucceeded, Job: job, Queue: queue, Duration: duration})
 	}
 }
@@ -261,10 +263,10 @@ func (p *Processor) handleFailure(job *payload.Job, jobErr error) {
 		}
 	} else {
 		job.State = payload.JobStateDead
-		p.log.Warn("job exceeded max retries, moving to dead queue", "jid", job.JID, "state", job.State)
+		p.log.Warn("job exceeded max retries, moving to dead queue", "jid", job.JID, "class", job.Class, "queue", job.Queue, "retries", job.RetryCount)
 		p.emitEvent(JobEvent{Type: EventJobMovedToDead, Job: job, Queue: job.Queue, Err: jobErr})
 		if err := p.broker.AddToDead(job); err != nil {
-			p.log.Warn("move to dead failed", "jid", job.JID, "err", err)
+			p.log.Warn("move to dead failed", "jid", job.JID, "class", job.Class, "err", err)
 		}
 	}
 }

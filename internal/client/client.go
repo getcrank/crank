@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ogwurujohnson/crank/internal/broker"
+	"github.com/ogwurujohnson/crank/internal/config"
 	"github.com/ogwurujohnson/crank/internal/payload"
 )
 
@@ -12,10 +13,11 @@ var globalClient atomic.Pointer[Client]
 
 type Client struct {
 	broker broker.Broker
+	logger config.Logger
 }
 
-func New(b broker.Broker) *Client {
-	return &Client{broker: b}
+func New(b broker.Broker, logger config.Logger) *Client {
+	return &Client{broker: b, logger: logger}
 }
 
 func SetGlobal(c *Client) {
@@ -30,6 +32,9 @@ func (c *Client) Enqueue(workerClass string, queue string, args ...interface{}) 
 	job := payload.NewJob(workerClass, queue, args...)
 	if err := c.broker.Enqueue(queue, job); err != nil {
 		return "", fmt.Errorf("failed to enqueue job: %w", err)
+	}
+	if c.logger != nil {
+		c.logger.Info("job enqueued", "jid", job.JID, "class", workerClass, "queue", queue)
 	}
 	return job.JID, nil
 }
@@ -48,6 +53,9 @@ func (c *Client) EnqueueWithOptions(workerClass string, queue string, options *p
 
 	if err := c.broker.Enqueue(queue, job); err != nil {
 		return "", fmt.Errorf("failed to enqueue job: %w", err)
+	}
+	if c.logger != nil {
+		c.logger.Info("job enqueued", "jid", job.JID, "class", workerClass, "queue", queue)
 	}
 	return job.JID, nil
 }
