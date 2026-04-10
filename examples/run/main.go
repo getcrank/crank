@@ -62,6 +62,7 @@ func main() {
 			brokerURL = "redis://localhost:6379/0"
 		}
 		engine, client, err = crank.New(brokerURL,
+			crank.WithBroker("redis"),
 			crank.WithConcurrency(2),
 			crank.WithTimeout(10*time.Second),
 			crank.WithQueues(

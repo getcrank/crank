@@ -1,6 +1,7 @@
 package crank
 
 import (
+	"fmt"
 	"regexp"
 
 	"github.com/ogwurujohnson/crank/internal/broker"
@@ -12,7 +13,10 @@ import (
 
 // New creates an Engine and Client connected to the broker at brokerURL.
 // Options configure concurrency, timeouts, queues, and logging.
-// The returned Client is the primary way to enqueue jobs; you may call SetGlobalClient(client) for global Enqueue/EnqueueWithOptions.
+//
+// A broker must be specified explicitly via WithBroker("redis"|"nats"|"pgsql")
+// or by supplying a custom implementation with WithCustomBroker. If neither is
+// provided, New returns an error.
 func New(brokerURL string, opts ...Option) (*Engine, *Client, error) {
 	defaultOpts := defaultOptions()
 	for _, opt := range opts {
@@ -20,9 +24,20 @@ func New(brokerURL string, opts ...Option) (*Engine, *Client, error) {
 	}
 
 	cfg := buildConfig(defaultOpts, brokerURL)
-	store, err := newBroker(brokerURL, defaultOpts)
-	if err != nil {
-		return nil, nil, err
+
+	var store broker.Broker
+	var err error
+
+	switch {
+	case defaultOpts.customBroker != nil:
+		store = defaultOpts.customBroker
+	case defaultOpts.brokerKind != "":
+		store, err = newBroker(brokerURL, defaultOpts)
+		if err != nil {
+			return nil, nil, err
+		}
+	default:
+		return nil, nil, fmt.Errorf("crank: no broker configured; use WithBroker(\"redis\"|\"nats\"|\"pgsql\") or WithCustomBroker()")
 	}
 
 	eng, err := newEngine(cfg, store)
@@ -129,12 +144,15 @@ func brokerURLAndOptsFromConfig(cfg *config.Config) (string, broker.ConnOptions)
 		return cfg.NATS.URL, broker.ConnOptions{
 			Timeout: cfg.NATS.GetTimeout(),
 		}
-	default:
+	case "redis":
 		return cfg.Redis.URL, broker.ConnOptions{
 			Timeout:               cfg.Redis.GetNetworkTimeout(),
 			UseTLS:                cfg.Redis.UseTLS,
 			TLSInsecureSkipVerify: cfg.Redis.TLSInsecureSkipVerify,
 		}
+	default:
+		// pgsql and others — URL comes from broker_url in config
+		return cfg.BrokerURL, broker.ConnOptions{}
 	}
 }
 
@@ -173,6 +191,10 @@ var (
 	Enqueue            = client.EnqueueGlobal
 	EnqueueWithOptions = client.EnqueueWithOptionsGlobal
 )
+
+// Broker is the backend-agnostic interface for job queue storage.
+// Implement this interface to provide a custom broker backend via WithCustomBroker.
+type Broker = broker.Broker
 
 // Logger is the interface used for engine logging.
 type Logger = config.Logger

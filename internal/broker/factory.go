@@ -6,14 +6,11 @@ import (
 )
 
 // Open creates a Broker from a backend kind, URL, and connection options.
-// Kind is set by config (broker: redis|nats|rabbitmq) so users choose the backend explicitly;
-// the URL and opts come from the matching config section (redis, nats, etc.).
+// Kind must be set explicitly (e.g. "redis", "nats", "pgsql"); there is no inference from URL.
 //
-//   - kind "redis" → Redis broker; opts must include Timeout, UseTLS, TLSInsecureSkipVerify (from redis config).
+//   - kind "redis" → Redis broker; opts must include Timeout, UseTLS, TLSInsecureSkipVerify.
 //   - kind "nats"  → NATS broker (not yet implemented).
-//   - kind "rabbitmq" → RabbitMQ broker (not yet implemented).
-//
-// If kind is empty, Open falls back to inferring from URL scheme for backward compatibility.
+//   - kind "pgsql" → PostgreSQL broker (not yet implemented).
 func Open(kind string, rawURL string, opts ConnOptions) (Broker, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -22,7 +19,7 @@ func Open(kind string, rawURL string, opts ConnOptions) (Broker, error) {
 
 	kind = strings.TrimSpace(strings.ToLower(kind))
 	if kind == "" {
-		kind = inferKindFromURL(rawURL)
+		return nil, fmt.Errorf("broker: kind is required; use \"redis\", \"nats\", or \"pgsql\"")
 	}
 
 	switch kind {
@@ -30,25 +27,10 @@ func Open(kind string, rawURL string, opts ConnOptions) (Broker, error) {
 		return openRedis(rawURL, opts)
 	case "nats":
 		return openNats(rawURL, opts)
-	case "rabbitmq":
-		return nil, fmt.Errorf("broker: RabbitMQ backend not yet implemented")
+	case "pgsql":
+		return nil, fmt.Errorf("broker: PostgreSQL backend not yet implemented")
 	default:
-		return nil, fmt.Errorf("broker: unsupported broker %q (use redis, nats, or rabbitmq)", kind)
-	}
-}
-
-// inferKindFromURL returns a broker kind from URL scheme for backward compatibility
-// when kind is not set (e.g. programmatic New with only URL).
-func inferKindFromURL(rawURL string) string {
-	switch {
-	case strings.HasPrefix(strings.ToLower(rawURL), "redis://"), strings.HasPrefix(strings.ToLower(rawURL), "rediss://"):
-		return "redis"
-	case strings.HasPrefix(strings.ToLower(rawURL), "nats://"):
-		return "nats"
-	case strings.HasPrefix(strings.ToLower(rawURL), "amqp://"), strings.HasPrefix(strings.ToLower(rawURL), "amqps://"):
-		return "rabbitmq"
-	default:
-		return ""
+		return nil, fmt.Errorf("broker: unsupported broker %q (use redis, nats, or pgsql)", kind)
 	}
 }
 
