@@ -1,34 +1,68 @@
-# Security considerations
+# Security
 
-## Configuration
+This document covers security concerns and mitigations you should be aware of when using Crank in production.
 
-- **Config file path**: `QuickStart(configPath)` and internal `config.Load(path)` reject paths that are or start with `..` (traversal). Do not pass untrusted user input as the config path.
-- **YAML content**: Config files are trusted input. Do not load YAML from untrusted sources.
-- **Environment variables**: `REDIS_URL` and `NATS_URL` can contain credentials. Prefer environment-based config over config files when secrets are involved.
+## Broker credentials
 
-## Broker and queues
+Broker URLs often contain passwords (e.g. `redis://:secret@host:6379/0`). Protect them accordingly:
 
-- **Broker URL**: Redis (and future broker) URLs may contain passwords. Keep config and env vars restricted; avoid logging full URLs.
-- **Queue names**: Queue names are used in Redis keys (e.g. `queue:<name>`). Avoid user-controlled queue names that could be used for key-space abuse (e.g. very long names or special characters). Prefer fixed, allowlisted names.
-- **DeleteKey**: The broker’s `DeleteKey` is used internally (e.g. queue clear). Do not expose it with arbitrary user-controlled keys in production.
+- Pass URLs via environment variables (`REDIS_URL`, `NATS_URL`) rather than checking them into config files.
+- Restrict file permissions on any config file that contains a broker URL.
+- Crank does **not** redact credentials from error messages. Do not expose SDK errors to end users.
 
-## TLS
+## Encrypt connections with TLS
 
-- **TLS**: Use `rediss://` or enable TLS in config for Redis in production. Avoid `TLSInsecureSkipVerify` outside development.
-- **Min version**: The Redis client uses TLS 1.2 minimum when TLS is enabled.
+Unencrypted broker connections expose job data and credentials on the wire.
 
-## Logging and redaction
+- Use `rediss://` URLs or `WithTLS(true)` to enable TLS. Crank enforces TLS 1.2 minimum.
+- **Never** use `WithTLSInsecureSkipVerify(true)` in production — it disables certificate verification and exposes you to man-in-the-middle attacks. It exists only for local development with self-signed certs.
 
-- **Job arguments**: Failed jobs are logged with arguments passed through the configured **redactor**. Default is masking; use `SetRedactor` to customize. Avoid `NoopRedactor` if logs may contain sensitive data.
-- **Panics**: The recovery middleware logs panic value and stack trace. Ensure logs are protected and not exposed to untrusted parties.
+## Redact sensitive job arguments
 
-## Validation
+When a job fails, Crank logs its arguments. If those arguments contain passwords, tokens, or PII, they will appear in your logs unless you configure a redactor.
 
-- Use **validators** (e.g. `ClassAllowlist`, `MaxArgsCount`, `MaxPayloadSize`) to restrict which jobs can run and how large payloads can be. Set a global validator with `SetValidator` to enforce policy before job execution.
+The default `MaskingRedactor` replaces all arguments with `[REDACTED]`. If you need to see non-sensitive args, use `FieldMaskingRedactor` to mask only specific keys:
 
-## Testing
+```go
+crank.SetRedactor(crank.NewFieldMaskingRedactor([]string{"password", "token", "ssn"}))
+```
 
-- **NewTestEngine** and the in-memory broker do not use Redis. They are intended for tests only; do not use them in production code paths.
+**Do not** use `NoopRedactor` unless you are certain no job will ever carry sensitive data.
+
+## Validate jobs before execution
+
+Without validation, any job class name and payload can be enqueued and executed. In shared or multi-tenant environments this is a risk.
+
+Use `SetValidator()` to restrict what the engine will accept. Validation runs before every job execution:
+
+```go
+crank.SetValidator(crank.ChainValidator{
+    crank.SafeClassPattern(),           // only [A-Za-z0-9_]
+    crank.MaxArgsCount(20),
+    crank.MaxPayloadSize(1 << 20),      // 1 MB
+})
+```
+
+- `ClassAllowlist` or `ClassPattern` prevents execution of unexpected job classes.
+- `MaxArgsCount` and `MaxPayloadSize` prevent oversized payloads from consuming memory.
+
+## Do not use user input as queue names
+
+Queue names become Redis keys (e.g. `queue:<name>`). Accepting user-controlled queue names can lead to key-space pollution, very long keys, or injection of special characters. Use fixed, hardcoded queue names.
+
+## Protect config file paths
+
+If you use `QuickStart(configPath)`, do not pass untrusted user input as the path. Crank rejects `..` traversals and resolves symlinks, but the safest approach is to hardcode or tightly control the config path.
+
+YAML config files are parsed as trusted input. Never load config from an untrusted source.
+
+## Custom broker responsibilities
+
+When providing a custom broker via `WithCustomBroker()`, you are responsible for its security properties — TLS, authentication, connection timeouts, and access control. Crank cannot enforce these on an implementation it does not control.
+
+## Do not use the test engine in production
+
+`NewTestEngine()` uses an in-memory broker with no authentication, persistence, or encryption. It is intended for tests only.
 
 ## Reporting vulnerabilities
 

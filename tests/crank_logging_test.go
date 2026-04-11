@@ -147,7 +147,7 @@ func TestLogging_FailedJobLifecycle(t *testing.T) {
 	assertHasLog(t, spy, "job enqueued")
 	assertHasLog(t, spy, "job dequeued")
 	assertHasLog(t, spy, "job failed")
-	assertHasLog(t, spy, "job moved to dead queue")
+	assertHasLog(t, spy, "job exceeded max retries, moving to dead queue")
 }
 
 func TestLogging_EnqueueIncludesClassAndQueue(t *testing.T) {

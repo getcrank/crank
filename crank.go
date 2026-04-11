@@ -270,7 +270,7 @@ func NewFieldMaskingRedactor(keys []string) *payload.FieldMaskingRedactor {
 // Validator validates jobs before execution.
 type Validator = payload.Validator
 
-// ChainValidator composes validators.
+// ChainValidator exposes validators.
 type ChainValidator = payload.ChainValidator
 
 var (
