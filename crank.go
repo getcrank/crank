@@ -119,7 +119,6 @@ func buildConfig(opts options, brokerURL string) *config.Config {
 		Queues:            qConfig,
 		Logger:            opts.logger,
 		RetryPollInterval: opts.retryPollInterval,
-		// TODO: this should be generic populated only based on the brokerType of choice
 		Redis: config.RedisConfig{
 			URL:                   brokerURL,
 			NetworkTimeout:        redisTimeoutSec,
