@@ -143,6 +143,8 @@ func (p *Processor) Start() error {
 	// Start Maintenance Loops
 	p.wg.Add(1)
 	go p.retryLoop()
+	p.wg.Add(1)
+	go p.reaperLoop()
 	if p.events != nil {
 		p.wg.Add(1)
 		go p.metricsLoop()
@@ -201,6 +203,7 @@ func (p *Processor) fetcher() {
 				if err := p.broker.Enqueue(q, job); err != nil {
 					p.log.Error("failed to re-enqueue job on shutdown", "jid", job.JID, "queue", q, "err", err)
 				}
+				_ = p.broker.Ack(job)
 				return
 			}
 		}
@@ -234,6 +237,9 @@ func (p *Processor) processJob(job *payload.Job, queue string) {
 		job.State = payload.JobStateSuccess
 		p.log.Info("job processed", "jid", job.JID, "class", job.Class, "queue", queue, "dur", duration)
 		p.emitEvent(JobEvent{Type: EventJobSucceeded, Job: job, Queue: queue, Duration: duration})
+		if ackErr := p.broker.Ack(job); ackErr != nil {
+			p.log.Warn("ack failed", "jid", job.JID, "err", ackErr)
+		}
 	}
 }
 
@@ -243,6 +249,9 @@ func (p *Processor) handleFailure(job *payload.Job, jobErr error) {
 		job.State = payload.JobStatePending
 		if err := p.broker.AddToRetry(job, time.Now().Add(5*time.Second)); err != nil {
 			p.log.Warn("circuit-open re-enqueue failed", "jid", job.JID, "err", err)
+		}
+		if ackErr := p.broker.Ack(job); ackErr != nil {
+			p.log.Warn("ack failed after circuit-open re-enqueue", "jid", job.JID, "err", ackErr)
 		}
 		return
 	}
@@ -261,12 +270,18 @@ func (p *Processor) handleFailure(job *payload.Job, jobErr error) {
 		if err := p.broker.AddToRetry(job, retryAt); err != nil {
 			p.log.Warn("retry schedule failed", "jid", job.JID, "err", err)
 		}
+		if ackErr := p.broker.Ack(job); ackErr != nil {
+			p.log.Warn("ack failed after retry schedule", "jid", job.JID, "err", ackErr)
+		}
 	} else {
 		job.State = payload.JobStateDead
 		p.log.Warn("job exceeded max retries, moving to dead queue", "jid", job.JID, "class", job.Class, "queue", job.Queue, "retries", job.RetryCount)
 		p.emitEvent(JobEvent{Type: EventJobMovedToDead, Job: job, Queue: job.Queue, Err: jobErr})
 		if err := p.broker.AddToDead(job); err != nil {
 			p.log.Warn("move to dead failed", "jid", job.JID, "class", job.Class, "err", err)
+		}
+		if ackErr := p.broker.Ack(job); ackErr != nil {
+			p.log.Warn("ack failed after dead-letter", "jid", job.JID, "err", ackErr)
 		}
 	}
 }
@@ -305,6 +320,41 @@ func (p *Processor) retryLoop() {
 					if addErr := p.broker.AddToRetry(j, time.Now().Add(time.Minute)); addErr != nil {
 						p.log.Error("failed to re-add job to retry set, job may be lost", "jid", j.JID, "err", addErr)
 					}
+				}
+			}
+		}
+	}
+}
+
+func (p *Processor) reaperLoop() {
+	defer p.wg.Done()
+	interval := p.cfg.ReaperInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	lease := p.cfg.GetTimeout() + 30*time.Second
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case <-ticker.C:
+			orphaned, err := p.broker.ReapOrphanedJobs(lease)
+			if err != nil {
+				p.log.Warn("reaper failed", "err", err)
+				continue
+			}
+			for _, j := range orphaned {
+				if !p.queueSet[j.Queue] {
+					p.log.Warn("orphaned job has unknown queue, skipping", "jid", j.JID, "queue", j.Queue)
+					continue
+				}
+				p.log.Info("reaping orphaned job", "jid", j.JID, "class", j.Class, "queue", j.Queue)
+				if err := p.broker.Enqueue(j.Queue, j); err != nil {
+					p.log.Error("failed to re-enqueue orphaned job", "jid", j.JID, "err", err)
 				}
 			}
 		}

@@ -13,12 +13,19 @@ import (
 // Queues are map[string][]*payload.Job (FIFO per queue). Retry and dead jobs are
 // kept in slices so tests can inspect them.
 type InMemoryBroker struct {
-	mu        sync.Mutex
-	queues    map[string][]*payload.Job
-	retry     []retryEntry
-	dead      []*payload.Job
-	processed int64
-	done      chan struct{}
+	mu         sync.Mutex
+	queues     map[string][]*payload.Job
+	processing []processingEntry
+	retry      []retryEntry
+	dead       []*payload.Job
+	processed  int64
+	done       chan struct{}
+}
+
+type processingEntry struct {
+	Job      *payload.Job
+	Queue    string
+	LeaseExp time.Time
 }
 
 type retryEntry struct {
@@ -50,8 +57,11 @@ func (m *InMemoryBroker) Enqueue(queue string, job *payload.Job) error {
 	return nil
 }
 
-// Dequeue blocks until a job is available in one of the given queues or the timeout expires.
-// It polls periodically (small sleep) to simulate blocking. Returns (nil, "", nil) on timeout.
+// defaultLeaseDuration is the visibility timeout for dequeued jobs.
+const defaultLeaseDuration = 5 * time.Minute
+
+// Dequeue pops a job from the queue and moves it to the processing set with a lease.
+// The caller must Ack or Nack the job. Returns (nil, "", nil) on timeout.
 func (m *InMemoryBroker) Dequeue(queues []string, timeout time.Duration) (*payload.Job, string, error) {
 	deadline := time.Now().Add(timeout)
 	tick := 5 * time.Millisecond
@@ -71,6 +81,11 @@ func (m *InMemoryBroker) Dequeue(queues []string, timeout time.Duration) (*paylo
 			if len(m.queues[q]) > 0 {
 				job := m.queues[q][0]
 				m.queues[q] = m.queues[q][1:]
+				m.processing = append(m.processing, processingEntry{
+					Job:      job,
+					Queue:    q,
+					LeaseExp: time.Now().Add(defaultLeaseDuration),
+				})
 				m.mu.Unlock()
 				return job, q, nil
 			}
@@ -87,6 +102,57 @@ func (m *InMemoryBroker) Dequeue(queues []string, timeout time.Duration) (*paylo
 			// poll again
 		}
 	}
+}
+
+// Ack removes the job from the processing set. Must be called after the job
+// outcome is determined (success, retry scheduled, or dead-lettered). Idempotent.
+func (m *InMemoryBroker) Ack(job *payload.Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.processing {
+		if e.Job.JID == job.JID {
+			m.processing = append(m.processing[:i], m.processing[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+// Nack removes the job from the processing set and re-enqueues it to its
+// original queue for immediate reprocessing. Idempotent.
+func (m *InMemoryBroker) Nack(job *payload.Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, e := range m.processing {
+		if e.Job.JID == job.JID {
+			m.processing = append(m.processing[:i], m.processing[i+1:]...)
+			job.State = payload.JobStatePending
+			m.queues[e.Queue] = append(m.queues[e.Queue], job)
+			return nil
+		}
+	}
+	return nil
+}
+
+// ReapOrphanedJobs returns jobs in the processing set whose lease has expired
+// (older than lease duration) and removes them from the processing set.
+// The caller is responsible for re-enqueuing them.
+func (m *InMemoryBroker) ReapOrphanedJobs(lease time.Duration) ([]*payload.Job, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cutoff := time.Now().Add(-lease)
+	var orphaned []*payload.Job
+	remaining := m.processing[:0]
+	for _, e := range m.processing {
+		if e.LeaseExp.Before(cutoff) {
+			e.Job.State = payload.JobStatePending
+			orphaned = append(orphaned, e.Job)
+		} else {
+			remaining = append(remaining, e)
+		}
+	}
+	m.processing = remaining
+	return orphaned, nil
 }
 
 // AddToRetry adds the job to the retry set with the given retry time.
@@ -181,10 +247,11 @@ func (m *InMemoryBroker) GetStats() (map[string]interface{}, error) {
 		queues[q] = int64(len(list))
 	}
 	return map[string]interface{}{
-		"processed": m.processed,
-		"retry":     int64(len(m.retry)),
-		"dead":      int64(len(m.dead)),
-		"queues":    queues,
+		"processed":  m.processed,
+		"processing": int64(len(m.processing)),
+		"retry":      int64(len(m.retry)),
+		"dead":       int64(len(m.dead)),
+		"queues":     queues,
 	}, nil
 }
 
@@ -207,6 +274,17 @@ func (m *InMemoryBroker) RetryJobs() []*payload.Job {
 	defer m.mu.Unlock()
 	out := make([]*payload.Job, len(m.retry))
 	for i, e := range m.retry {
+		out[i] = e.Job
+	}
+	return out
+}
+
+// ProcessingJobs returns a copy of jobs currently in the processing set (for test inspection).
+func (m *InMemoryBroker) ProcessingJobs() []*payload.Job {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*payload.Job, len(m.processing))
+	for i, e := range m.processing {
 		out[i] = e.Job
 	}
 	return out
