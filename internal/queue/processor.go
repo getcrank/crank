@@ -18,23 +18,23 @@ type jobMsg struct {
 }
 
 type Processor struct {
-	cfg       *config.Config
-	broker    broker.Broker
-	registry  WorkerRegistry
-	log       Logger
-	queues    []string
-	queueSet  map[string]bool
-	jobCh     chan jobMsg
-	wg        sync.WaitGroup
-	ctx       context.Context
-	cancel    context.CancelFunc
-	chain     *Chain
-	handler   Handler
-	breaker   *CircuitBreaker
-	metrics   MetricsHandler
-	events    chan JobEvent
-	started   bool
-	mu        sync.Mutex
+	cfg      *config.Config
+	broker   broker.Broker
+	registry WorkerRegistry
+	log      Logger
+	queues   []string
+	queueSet map[string]bool
+	jobCh    chan jobMsg
+	wg       sync.WaitGroup
+	ctx      context.Context
+	cancel   context.CancelFunc
+	chain    *Chain
+	handler  Handler
+	breaker  *CircuitBreaker
+	metrics  MetricsHandler
+	events   chan JobEvent
+	started  bool
+	mu       sync.Mutex
 }
 
 func NewProcessor(cfg *config.Config, b broker.Broker, registry WorkerRegistry, chain *Chain) (*Processor, error) {
