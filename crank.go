@@ -79,6 +79,7 @@ func buildConfig(opts options) *config.Config {
 		Queues:            qConfig,
 		Logger:            opts.logger,
 		RetryPollInterval: opts.retryPollInterval,
+		ReaperInterval:    opts.reaperInterval,
 	}
 }
 

@@ -36,6 +36,7 @@ type Config struct {
 	NATS              NATSConfig    `yaml:"nats"`  // required when broker is "nats"
 	Logger            Logger        `yaml:"-"`
 	RetryPollInterval time.Duration `yaml:"-"` // optional; 0 means default 5s (used by tests)
+	ReaperInterval    time.Duration `yaml:"-"` // optional; 0 means default 30s
 }
 
 // NATSConfig holds NATS connection options. Used when broker is "nats".

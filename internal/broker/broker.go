@@ -7,12 +7,21 @@ import (
 )
 
 // Broker is the internal backend-agnostic interface for job queues.
-// Implementations (Redis, NATS, RabbitMQ, etc.) live in this package and are
-// selected by Open(url, opts) based on the URL scheme. Callers outside this
-// package never reference a concrete backend—they use Broker only.
+// Implementations (Redis, NATS, etc.) live in this package and are
+// selected by Open(kind, url, opts). Callers outside this package
+// never reference a concrete backend—they use Broker only.
+//
+// Dequeue leases the job: it is moved to a processing set with a
+// visibility timeout. The caller must Ack (on success or after
+// scheduling retry/dead) or Nack (to re-enqueue immediately).
+// Jobs whose lease expires without an Ack are reclaimed by
+// ReapOrphanedJobs.
 type Broker interface {
 	Enqueue(queue string, job *payload.Job) error
 	Dequeue(queues []string, timeout time.Duration) (*payload.Job, string, error)
+	Ack(job *payload.Job) error
+	Nack(job *payload.Job) error
+	ReapOrphanedJobs(lease time.Duration) ([]*payload.Job, error)
 	AddToRetry(job *payload.Job, retryAt time.Time) error
 	GetRetryJobs(limit int64) ([]*payload.Job, error)
 	RemoveFromRetry(job *payload.Job) error

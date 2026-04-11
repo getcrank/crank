@@ -135,7 +135,10 @@ func (s *stubBroker) GetQueueSize(queue string) (int64, error) {
 	return int64(len(s.queues[queue])), nil
 }
 
-func (s *stubBroker) DeleteKey(key string) error { return nil }
+func (s *stubBroker) Ack(job *crank.Job) error                                   { return nil }
+func (s *stubBroker) Nack(job *crank.Job) error                                  { return nil }
+func (s *stubBroker) ReapOrphanedJobs(lease time.Duration) ([]*crank.Job, error) { return nil, nil }
+func (s *stubBroker) DeleteKey(key string) error                                 { return nil }
 
 func (s *stubBroker) GetStats() (map[string]interface{}, error) {
 	s.mu.Lock()

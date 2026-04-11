@@ -105,31 +105,106 @@ func (r *RedisBroker) Enqueue(queue string, job *payload.Job) error {
 	return nil
 }
 
+// dequeueAndLeaseScript atomically pops from a queue list and adds to the
+// processing sorted set with a lease expiry score.
+// KEYS[1]=queue key, KEYS[2]=processing key  ARGV[1]=lease expiry (unix)
+var dequeueAndLeaseScript = redis.NewScript(`
+local val = redis.call('RPOP', KEYS[1])
+if val == false then return nil end
+redis.call('ZADD', KEYS[2], ARGV[1], val)
+return {KEYS[1], val}
+`)
+
+const redisProcessingKey = "processing"
+
 func (r *RedisBroker) Dequeue(queues []string, timeout time.Duration) (*payload.Job, string, error) {
-	queueKeys := make([]string, len(queues))
-	for queueIndex, queueName := range queues {
-		queueKeys[queueIndex] = fmt.Sprintf("queue:%s", queueName)
-	}
+	deadline := time.Now().Add(timeout)
 
-	result, err := r.client.BRPop(r.ctx, timeout, queueKeys...).Result()
-	if err == redis.Nil {
-		return nil, "", nil
+	for {
+		for _, queueName := range queues {
+			queueKey := fmt.Sprintf("queue:%s", queueName)
+			leaseExp := float64(time.Now().Add(5 * time.Minute).Unix())
+
+			result, err := dequeueAndLeaseScript.Run(r.ctx, r.client,
+				[]string{queueKey, redisProcessingKey},
+				leaseExp,
+			).StringSlice()
+
+			if err == redis.Nil {
+				continue
+			}
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to dequeue: %w", err)
+			}
+			if len(result) < 2 {
+				continue
+			}
+
+			returnedQueueName := result[0][6:] // strip "queue:" prefix
+			job, err := payload.FromJSON([]byte(result[1]))
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to deserialize job: %w", err)
+			}
+			return job, returnedQueueName, nil
+		}
+
+		if time.Now().After(deadline) {
+			return nil, "", nil
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// Ack removes a job from the processing set after its outcome is handled.
+func (r *RedisBroker) Ack(job *payload.Job) error {
+	data, err := job.ToJSON()
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to dequeue: %w", err)
+		return fmt.Errorf("failed to serialize job for ack: %w", err)
 	}
+	return r.client.ZRem(r.ctx, redisProcessingKey, data).Err()
+}
 
-	if len(result) < 2 {
-		return nil, "", fmt.Errorf("invalid BRPop result")
-	}
-
-	queueName := result[0][6:]
-	job, err := payload.FromJSON([]byte(result[1]))
+// Nack removes a job from the processing set and re-enqueues it.
+func (r *RedisBroker) Nack(job *payload.Job) error {
+	data, err := job.ToJSON()
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to deserialize job: %w", err)
+		return fmt.Errorf("failed to serialize job for nack: %w", err)
+	}
+	pipe := r.client.Pipeline()
+	pipe.ZRem(r.ctx, redisProcessingKey, data)
+	queueKey := fmt.Sprintf("queue:%s", job.Queue)
+	pipe.LPush(r.ctx, queueKey, data)
+	_, err = pipe.Exec(r.ctx)
+	return err
+}
+
+// ReapOrphanedJobs finds jobs in the processing set whose lease expired and
+// removes them. The caller re-enqueues the returned jobs.
+func (r *RedisBroker) ReapOrphanedJobs(lease time.Duration) ([]*payload.Job, error) {
+	cutoff := float64(time.Now().Add(-lease).Unix())
+	results, err := r.client.ZRangeByScore(r.ctx, redisProcessingKey, &redis.ZRangeBy{
+		Min: "0", Max: fmt.Sprintf("%.0f", cutoff), Offset: 0, Count: 100,
+	}).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get orphaned jobs: %w", err)
+	}
+	if len(results) == 0 {
+		return nil, nil
 	}
 
-	return job, queueName, nil
+	var orphaned []*payload.Job
+	for _, data := range results {
+		if err := r.client.ZRem(r.ctx, redisProcessingKey, data).Err(); err != nil {
+			continue
+		}
+		job, err := payload.FromJSON([]byte(data))
+		if err != nil {
+			continue
+		}
+		job.State = payload.JobStatePending
+		orphaned = append(orphaned, job)
+	}
+	return orphaned, nil
 }
 
 func (r *RedisBroker) AddToRetry(job *payload.Job, retryAt time.Time) error {

@@ -17,6 +17,7 @@ type options struct {
 	queues            []queueOpt
 	logger            Logger
 	retryPollInterval time.Duration
+	reaperInterval    time.Duration
 	redisTimeout      time.Duration
 	useTLS            bool
 	tlsInsecureSkip   bool
@@ -87,6 +88,13 @@ func WithLogger(l Logger) Option {
 func WithRetryPollInterval(d time.Duration) Option {
 	return func(o *options) {
 		o.retryPollInterval = d
+	}
+}
+
+// WithReaperInterval sets how often the reaper checks for orphaned jobs. Default is 30 seconds.
+func WithReaperInterval(d time.Duration) Option {
+	return func(o *options) {
+		o.reaperInterval = d
 	}
 }
 

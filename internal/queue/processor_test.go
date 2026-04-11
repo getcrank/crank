@@ -44,6 +44,9 @@ func (b *spyBroker) Enqueue(q string, j *payload.Job) error {
 func (b *spyBroker) Dequeue([]string, time.Duration) (*payload.Job, string, error) {
 	return nil, "", nil
 }
+func (b *spyBroker) Ack(*payload.Job) error                                 { return nil }
+func (b *spyBroker) Nack(*payload.Job) error                                { return nil }
+func (b *spyBroker) ReapOrphanedJobs(time.Duration) ([]*payload.Job, error) { return nil, nil }
 func (b *spyBroker) AddToRetry(j *payload.Job, at time.Time) error {
 	b.retry = append(b.retry, j)
 	b.retryAt = append(b.retryAt, at)

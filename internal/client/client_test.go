@@ -61,15 +61,18 @@ func (b *stubBroker) Enqueue(queue string, job *payload.Job) error {
 func (b *stubBroker) Dequeue([]string, time.Duration) (*payload.Job, string, error) {
 	return nil, "", nil
 }
-func (b *stubBroker) AddToRetry(*payload.Job, time.Time) error   { return nil }
-func (b *stubBroker) GetRetryJobs(int64) ([]*payload.Job, error) { return nil, nil }
-func (b *stubBroker) RemoveFromRetry(*payload.Job) error         { return nil }
-func (b *stubBroker) AddToDead(*payload.Job) error               { return nil }
-func (b *stubBroker) GetDeadJobs(int64) ([]*payload.Job, error)  { return nil, nil }
-func (b *stubBroker) GetQueueSize(string) (int64, error)         { return 0, nil }
-func (b *stubBroker) DeleteKey(string) error                     { return nil }
-func (b *stubBroker) GetStats() (map[string]interface{}, error)  { return nil, nil }
-func (b *stubBroker) Close() error                               { return nil }
+func (b *stubBroker) Ack(*payload.Job) error                                 { return nil }
+func (b *stubBroker) Nack(*payload.Job) error                                { return nil }
+func (b *stubBroker) ReapOrphanedJobs(time.Duration) ([]*payload.Job, error) { return nil, nil }
+func (b *stubBroker) AddToRetry(*payload.Job, time.Time) error               { return nil }
+func (b *stubBroker) GetRetryJobs(int64) ([]*payload.Job, error)             { return nil, nil }
+func (b *stubBroker) RemoveFromRetry(*payload.Job) error                     { return nil }
+func (b *stubBroker) AddToDead(*payload.Job) error                           { return nil }
+func (b *stubBroker) GetDeadJobs(int64) ([]*payload.Job, error)              { return nil, nil }
+func (b *stubBroker) GetQueueSize(string) (int64, error)                     { return 0, nil }
+func (b *stubBroker) DeleteKey(string) error                                 { return nil }
+func (b *stubBroker) GetStats() (map[string]interface{}, error)              { return nil, nil }
+func (b *stubBroker) Close() error                                           { return nil }
 
 // ---------------------------------------------------------------------------
 // Tests

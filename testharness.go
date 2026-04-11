@@ -21,6 +21,11 @@ func (t *TestBroker) DeadJobs() []*Job {
 	return t.b.DeadJobs()
 }
 
+// ProcessingJobs returns a copy of jobs currently in the processing set (leased but not yet acked).
+func (t *TestBroker) ProcessingJobs() []*Job {
+	return t.b.ProcessingJobs()
+}
+
 // NewTestEngine creates an Engine and Client backed by an in-memory broker for
 // database-free testing. The third return value allows tests to inspect retry and dead
 // jobs. No Redis or other broker is required.
