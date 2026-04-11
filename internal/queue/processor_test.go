@@ -149,7 +149,10 @@ func TestProcessor_Lifecycle(t *testing.T) {
 	t.Run("RetryLoopIntegration", func(t *testing.T) {
 		job := payload.NewJob("W", "critical", 1)
 		b := &spyBroker{retryJobs: []*payload.Job{job}}
-		p, _ := NewProcessor(&config.Config{RetryPollInterval: 20 * time.Millisecond}, b, nil, nil)
+		p, _ := NewProcessor(&config.Config{
+			RetryPollInterval: 20 * time.Millisecond,
+			Queues:            []config.QueueConfig{{Name: "critical", Weight: 1}},
+		}, b, nil, nil)
 
 		p.wg.Add(1)
 		go p.retryLoop()

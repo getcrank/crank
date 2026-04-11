@@ -22,6 +22,8 @@ type classState struct {
 
 // CircuitBreaker tracks failures per job class and opens after threshold within window.
 // Thread-safe for use across concurrent workers.
+const maxBreakerClasses = 10000
+
 type CircuitBreaker struct {
 	mu               sync.RWMutex
 	failureThreshold int
@@ -59,6 +61,15 @@ func NewCircuitBreaker(cfg BreakerConfig) *CircuitBreaker {
 func (b *CircuitBreaker) getOrCreate(class string) *classState {
 	s, ok := b.classes[class]
 	if !ok {
+		// Evict closed entries if map is at capacity
+		if len(b.classes) >= maxBreakerClasses {
+			for k, v := range b.classes {
+				if v.state == stateClosed && len(v.failureTimes) == 0 {
+					delete(b.classes, k)
+					break
+				}
+			}
+		}
 		s = &classState{state: stateClosed, failureTimes: make([]time.Time, 0)}
 		b.classes[class] = s
 	}

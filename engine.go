@@ -39,10 +39,13 @@ type Engine struct {
 	processor *queue.Processor
 	registry  *engineRegistry
 	chain     *queue.Chain
+	mu        sync.Mutex
+	started   bool
+	stopOnce  sync.Once
 }
 
 // newEngine creates an Engine from internal config and broker. Used by New and QuickStart.
-func newEngine(cfg *config.Config, b broker.Broker) (*Engine, error) {
+func newEngine(cfg *config.Config, store broker.Broker) (*Engine, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = queue.NopLogger()
 	}
@@ -54,25 +57,32 @@ func newEngine(cfg *config.Config, b broker.Broker) (*Engine, error) {
 		queue.LoggingMiddleware(cfg.Logger),
 		queue.BreakerMiddleware(breaker),
 	)
-	processor, err := queue.NewProcessor(cfg, b, registry, chain)
+	processor, err := queue.NewProcessor(cfg, store, registry, chain)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Engine{
 		cfg:       cfg,
-		broker:    b,
+		broker:    store,
 		processor: processor,
 		registry:  registry,
 		chain:     chain,
 	}, nil
 }
 
-func (e *Engine) Use(middleware ...Middleware) {
+// Use adds middleware to the engine. Must be called before Start.
+func (e *Engine) Use(middleware ...Middleware) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.started {
+		return fmt.Errorf("Use must be called before Start")
+	}
 	if e.chain == nil {
-		return
+		return fmt.Errorf("engine chain not initialized")
 	}
 	e.chain.Use(middleware...)
+	return nil
 }
 
 func (e *Engine) Register(className string, worker Worker) {
@@ -91,11 +101,26 @@ func (e *Engine) RegisterMany(workers map[string]Worker) {
 }
 
 func (e *Engine) Start() error {
+	e.mu.Lock()
+	if e.started {
+		e.mu.Unlock()
+		return fmt.Errorf("engine already started")
+	}
+	e.started = true
+	e.mu.Unlock()
 	return e.processor.Start()
 }
 
 func (e *Engine) Stop() {
-	e.processor.Stop()
+	e.stopOnce.Do(func() {
+		e.processor.Stop()
+		_ = e.broker.Close()
+	})
+}
+
+// SetMetricsHandler sets the metrics handler for the engine. Must be called before Start.
+func (e *Engine) SetMetricsHandler(h MetricsHandler) error {
+	return e.processor.SetMetricsHandler(h)
 }
 
 // Stats returns queue statistics (processed, retry, dead, per-queue sizes).

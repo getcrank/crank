@@ -6,11 +6,9 @@
   <a href="https://github.com/ogwurujohnson/crank/actions/workflows/ci.yml"><img src="https://github.com/ogwurujohnson/crank/workflows/ci/badge.svg" alt="Build Status"></a>
 </p>
 
-Crank is a background job processing SDK for Go. It lets your applications enqueue jobs to named queues, run worker processes that execute those jobs concurrently, and observe execution via middleware, validation, and metrics hooks. You use a single package: `github.com/ogwurujohnson/crank`.
+Crank is a background job processing SDK for Go. Enqueue jobs to named queues, run concurrent workers, and observe execution via middleware, validation, and metrics hooks — all from a single package: `github.com/ogwurujohnson/crank`.
 
-Broker backends are pluggable: **Redis** is supported today; **NATS** and **RabbitMQ** are reserved for future implementations. You choose the broker via configuration (`broker: redis` in YAML) or by passing a URL to `New()` (e.g. `redis://localhost:6379/0`). The SDK is inspired by systems like [Sidekiq](https://github.com/sidekiq/sidekiq) but is designed to feel idiomatic in Go.
-
----
+Broker backends are pluggable. **Redis** is supported today; **NATS** and **PostgreSQL** are reserved for future implementations. You can also provide your own backend with `WithCustomBroker()`. Inspired by [Sidekiq](https://github.com/sidekiq/sidekiq), designed to feel idiomatic in Go.
 
 ## Installation
 
@@ -18,20 +16,11 @@ Broker backends are pluggable: **Redis** is supported today; **NATS** and **Rabb
 go get github.com/ogwurujohnson/crank
 ```
 
-```go
-import "github.com/ogwurujohnson/crank"
-```
-
----
-
 ## Quick Start
-
-Create an engine and client with the fluent API, or use a YAML config file.
-
-**Programmatic (recommended)**
 
 ```go
 engine, client, err := crank.New("redis://localhost:6379/0",
+    crank.WithBroker("redis"),
     crank.WithConcurrency(10),
     crank.WithTimeout(8*time.Second),
     crank.WithQueues(crank.QueueOption{Name: "default", Weight: 1}),
@@ -48,108 +37,75 @@ if err := engine.Start(); err != nil {
     log.Fatalf("engine start: %v", err)
 }
 
-// Enqueue jobs
 jid, _ := crank.Enqueue("EmailWorker", "default", "user-123")
 ```
 
-**From YAML config**
+Or from a YAML config:
 
 ```go
 engine, client, err := crank.QuickStart("config/crank.yml")
-if err != nil {
-    log.Fatalf("QuickStart: %v", err)
-}
-// QuickStart already calls SetGlobalClient(client)
-engine.Register("EmailWorker", EmailWorker{})
-engine.Start()
 ```
-
----
-
-## Example runner
-
-The repo includes an example that runs two demo workers (EmailWorker, ReportWorker). From the **repo root**:
-
-| Command | Description |
-|--------|-------------|
-| `go run ./examples/run` | Run with **fluent API**: uses `REDIS_URL` (default `redis://localhost:6379/0`), concurrency 2, timeout 10s, queue `default`. |
-| `go run ./examples/run -config` | Run with **YAML config**: loads `config/crank.yml` (see `-C` to change path). |
-| `go run ./examples/run -config -C path/to/crank.yml` | Same as `-config` but use a custom config file. |
-
-**Flags**
-
-- **`-config`**  
-  Use YAML configuration instead of the fluent API. If not set, the example uses `crank.New(brokerURL, opts...)` with defaults.
-
-- **`-C`**  
-  Path to the YAML config file. Used only when `-config` is set. Default: `config/crank.yml`.
-
-**Build and run a binary**
-
-```bash
-go build -o crank-example ./examples/run
-./crank-example                    # fluent API, default Redis URL
-./crank-example -config            # config file
-./crank-example -config -C my.yml  # custom config path
-```
-
----
 
 ## Testing without Redis
 
-Use the in-memory broker for database-free tests:
+`NewTestEngine` returns an engine backed by an in-memory broker — no external dependencies needed:
 
 ```go
 engine, client, tb, err := crank.NewTestEngine(
     crank.WithConcurrency(2),
     crank.WithTimeout(5*time.Second),
 )
-if err != nil {
-    t.Fatalf("NewTestEngine: %v", err)
-}
-
 engine.Register("MyWorker", myWorker{})
 engine.Start()
 defer engine.Stop()
 
 client.Enqueue("MyWorker", "default", "arg1")
-// ... run job ...
 
-// Inspect retry/dead/enqueued state
+// Inspect state after processing
 retry := tb.RetryJobs()
 dead := tb.DeadJobs()
-enqueued := tb.GetEnqueuedJobs("default")
 ```
-
-See `crank_test.go` in the repo for full examples.
-
----
 
 ## Features
 
-- **Pluggable brokers**: Redis today; broker chosen by config (`broker: redis`) or URL scheme. NATS/RabbitMQ reserved for future use.
-- **Fluent API**: `New(brokerURL, opts...)` with `WithConcurrency`, `WithTimeout`, `WithQueues`, `WithLogger`, `WithBroker`, etc.
-- **YAML config**: `QuickStart(path)` loads `broker`, `broker_url`, `redis`/`nats` sections, queues, timeouts, concurrency.
-- **Workers**: Implement `crank.Worker` (e.g. `Perform(ctx, args...) error`); register with `engine.Register` or `engine.RegisterMany`.
-- **Queues**: Named queues with weights; engine polls by weight. Default queue: `default`.
-- **Retries & dead queue**: Exponential backoff; configurable retry count per job; jobs that exhaust retries move to a dead set.
-- **Middleware**: Built-in recovery, logging, circuit breaker; add more with `engine.Use(middleware)`.
-- **Validation & redaction**: Optional global validator and redactor for job args (see `docs/advanced.md`).
-- **Stats**: `engine.Stats()` returns processed, retry, dead, and per-queue sizes.
-- **Global client**: `SetGlobalClient(client)` then `crank.Enqueue(...)` / `crank.EnqueueWithOptions(...)` from anywhere.
+- **Explicit broker selection**: `WithBroker("redis")` or `WithCustomBroker()` — no implicit defaults.
+- **Fluent API**: `New(brokerURL, opts...)` with `WithBroker`, `WithCustomBroker`, `WithConcurrency`, `WithTimeout`, `WithQueues`, `WithLogger`, etc.
+- **YAML config**: `QuickStart(path)` for file-driven setup.
+- **Workers**: Implement `crank.Worker` (`Perform(ctx, args...) error`); register with `engine.Register` or `engine.RegisterMany`.
+- **Weighted queues**: Named queues polled by weight.
+- **Retries and dead queue**: Exponential backoff with configurable retry count; exhausted jobs move to a dead set.
+- **Middleware**: Built-in recovery, logging, and circuit breaker; extend with `engine.Use()`.
+- **Validation and redaction**: Global validators (`ClassAllowlist`, `MaxPayloadSize`, etc.) and argument redactors for safe logging.
+- **Lifecycle logging**: Enqueue, dequeue, processed, failed, and dead queue events logged when a logger is provided.
+- **Stats**: `engine.Stats()` returns processed, retry, dead, and per-queue counts.
+- **Global client**: `SetGlobalClient(client)` then `crank.Enqueue(...)` from anywhere.
 
----
+## Benchmarks
 
-## Documentation
+Measured on Apple M1, Go 1.24, in-memory broker (`go test -bench=. -benchmem ./tests/`):
 
-| Document | Description |
-|----------|-------------|
-| [docs/engine.md](docs/engine.md) | Engine, workers, registration, middleware, retries, and lifecycle. |
-| [docs/enqueueing.md](docs/enqueueing.md) | Client, `Enqueue` / `EnqueueWithOptions`, global helpers, `Job` and `JobOptions`. |
-| [docs/configuration.md](docs/configuration.md) | YAML config: `broker`, `broker_url`, `redis`, `nats`, queues, timeouts. |
-| [docs/advanced.md](docs/advanced.md) | Validation, redaction, circuit breaker, metrics events, and stats. |
-| [SECURITY.md](SECURITY.md) | Security considerations: config path, TLS, redaction, queue names, reporting. |
+| Benchmark | ops/sec | ns/op | B/op | allocs/op |
+|-----------|--------:|------:|-----:|----------:|
+| Enqueue (single) | 1,701,962 | 669 | 481 | 9 |
+| Enqueue (parallel, 8 goroutines) | 1,272,718 | 1,029 | 484 | 9 |
+| Broker Enqueue (raw) | 2,117,263 | 544 | 313 | 5 |
+| Broker Dequeue (raw) | 4,198,285 | 348 | 248 | 3 |
+| Job ToJSON | 2,006,526 | 631 | 320 | 4 |
+| Job FromJSON | 479,511 | 2,575 | 992 | 23 |
+| Middleware Chain (recovery + logging) | 180,486,771 | 6 | 0 | 0 |
+| Circuit Breaker Allow (single) | 18,271,932 | 59 | 0 | 0 |
+| Circuit Breaker Allow (parallel) | 6,381,554 | 184 | 0 | 0 |
 
-All public types and functions live in `github.com/ogwurujohnson/crank`.
+```bash
+go test -bench=. -benchmem ./tests/
+```
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for broker credentials, TLS, redaction, validation, and vulnerability reporting.
+
+## License
+
+See [LICENSE](LICENSE) for details.
 
 **Maintainer:** ogwurujohnson@gmail.com

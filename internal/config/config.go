@@ -23,10 +23,10 @@ type Logger interface {
 }
 
 // Config holds engine and broker configuration.
-// Broker selection is via Broker (e.g. "redis", "nats", "rabbitmq"); the matching
+// Broker selection is via Broker (e.g. "redis", "nats", "pgsql"); the matching
 // section (Redis, NATS, etc.) must be non-empty and provide URL and options.
 type Config struct {
-	Broker            string        `yaml:"broker"`     // "redis", "nats", "rabbitmq". Default "redis".
+	Broker            string        `yaml:"broker"`     // "redis", "nats", "pgsql". Required — no default.
 	BrokerURL         string        `yaml:"broker_url"` // optional fallback URL when backend's url is empty
 	Concurrency       int           `yaml:"concurrency"`
 	Queues            []QueueConfig `yaml:"queues"`
@@ -112,7 +112,22 @@ func Load(path string) (*Config, error) {
 	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
 		return nil, fmt.Errorf("failed to read config file: path must not be a traversal (..)")
 	}
-	data, err := os.ReadFile(path)
+	// Resolve symlinks to prevent symlink-based traversal
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config path: %w", err)
+	}
+	// Re-check the resolved path for traversal
+	if !filepath.IsAbs(cleaned) {
+		wd, wdErr := os.Getwd()
+		if wdErr == nil {
+			rel, relErr := filepath.Rel(wd, resolved)
+			if relErr == nil && (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+				return nil, fmt.Errorf("failed to read config file: resolved path escapes working directory")
+			}
+		}
+	}
+	data, err := os.ReadFile(resolved)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -122,10 +137,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	// Normalize broker kind; default to redis
+	// Normalize broker kind; no default — must be set explicitly
 	cfg.Broker = strings.TrimSpace(strings.ToLower(cfg.Broker))
 	if cfg.Broker == "" {
-		cfg.Broker = "redis"
+		return nil, fmt.Errorf("config: \"broker\" field is required (use redis, nats, or pgsql)")
 	}
 
 	switch cfg.Broker {
@@ -137,7 +152,7 @@ func Load(path string) (*Config, error) {
 			cfg.Redis.URL = os.Getenv("REDIS_URL")
 		}
 		if cfg.Redis.URL == "" {
-			cfg.Redis.URL = "redis://localhost:6379/0"
+			return nil, fmt.Errorf("config: broker is %q but redis.url (or broker_url / REDIS_URL) is empty", cfg.Broker)
 		}
 		if cfg.Redis.NetworkTimeout == 0 {
 			cfg.Redis.NetworkTimeout = 5
@@ -150,15 +165,15 @@ func Load(path string) (*Config, error) {
 			cfg.NATS.URL = os.Getenv("NATS_URL")
 		}
 		if cfg.NATS.URL == "" {
-			return nil, fmt.Errorf("config: broker is %q but nats.url (or broker_url) is empty", cfg.Broker)
+			return nil, fmt.Errorf("config: broker is %q but nats.url (or broker_url / NATS_URL) is empty", cfg.Broker)
 		}
 		if cfg.NATS.Timeout == 0 {
 			cfg.NATS.Timeout = 5
 		}
-	case "rabbitmq":
+	case "pgsql":
 		return nil, fmt.Errorf("config: broker %q is not yet implemented", cfg.Broker)
 	default:
-		return nil, fmt.Errorf("config: unknown broker %q (use redis, nats, or rabbitmq)", cfg.Broker)
+		return nil, fmt.Errorf("config: unknown broker %q (use redis, nats, or pgsql)", cfg.Broker)
 	}
 
 	if cfg.Concurrency <= 0 {

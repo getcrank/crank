@@ -2,13 +2,16 @@ package crank
 
 import (
 	"time"
+
+	"github.com/ogwurujohnson/crank/internal/broker"
 )
 
 // Option configures the engine and client created by New.
 type Option func(*options)
 
 type options struct {
-	brokerKind        string // "redis", "nats", "rabbitmq"; empty = infer from URL
+	brokerKind        string        // "redis", "nats", "pgsql"; must be set explicitly via WithBroker
+	customBroker      broker.Broker // user-provided broker implementation; takes precedence over brokerKind
 	concurrency       int
 	timeout           time.Duration
 	queues            []queueOpt
@@ -30,11 +33,19 @@ type QueueOption struct {
 	Weight int
 }
 
-// WithBroker sets the broker backend explicitly ("redis", "nats", "rabbitmq").
-// Default is empty, which infers the broker from the URL scheme (e.g. redis:// → redis).
+// WithBroker sets the broker backend explicitly ("redis", "nats", "pgsql").
+// Either WithBroker or WithCustomBroker must be provided; there is no default.
 func WithBroker(kind string) Option {
 	return func(o *options) {
 		o.brokerKind = kind
+	}
+}
+
+// WithCustomBroker injects a user-provided Broker implementation.
+// When set, brokerURL and WithBroker are ignored and this broker is used directly.
+func WithCustomBroker(b broker.Broker) Option {
+	return func(o *options) {
+		o.customBroker = b
 	}
 }
 

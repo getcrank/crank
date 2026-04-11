@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 
@@ -72,13 +73,19 @@ func RecoveryMiddleware(logger Logger) Middleware {
 	}
 }
 
-// BreakerMiddleware reports job success/failure to the circuit breaker after execution.
+// ErrCircuitOpen is returned when the circuit breaker is open for a job class.
+var ErrCircuitOpen = errors.New("circuit breaker is open")
+
+// BreakerMiddleware checks the circuit breaker before execution and records outcomes after.
 func BreakerMiddleware(breaker *CircuitBreaker) Middleware {
 	if breaker == nil {
 		return func(next Handler) Handler { return next }
 	}
 	return func(next Handler) Handler {
 		return func(ctx context.Context, job *payload.Job) error {
+			if !breaker.Allow(job.Class) {
+				return ErrCircuitOpen
+			}
 			err := next(ctx, job)
 			if err != nil {
 				breaker.RecordFailure(job.Class)

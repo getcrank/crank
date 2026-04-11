@@ -2,6 +2,7 @@ package broker
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,6 +62,9 @@ func (m *InMemoryBroker) Dequeue(queues []string, timeout time.Duration) (*paylo
 		}
 	}
 
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+
 	for {
 		m.mu.Lock()
 		for _, q := range queues {
@@ -79,7 +83,7 @@ func (m *InMemoryBroker) Dequeue(queues []string, timeout time.Duration) (*paylo
 		select {
 		case <-m.done:
 			return nil, "", nil
-		case <-time.After(tick):
+		case <-ticker.C:
 			// poll again
 		}
 	}
@@ -157,8 +161,14 @@ func (m *InMemoryBroker) GetQueueSize(queue string) (int64, error) {
 	return int64(len(m.queues[queue])), nil
 }
 
-// DeleteKey is a no-op for in-memory; provided for interface compatibility.
+// DeleteKey deletes a queue by key. Restricted to "queue:" prefixed keys.
 func (m *InMemoryBroker) DeleteKey(key string) error {
+	if !strings.HasPrefix(key, "queue:") {
+		return fmt.Errorf("DeleteKey restricted to queue: prefix, got %q", key)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.queues, key[6:])
 	return nil
 }
 
