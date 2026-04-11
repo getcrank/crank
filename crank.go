@@ -23,7 +23,7 @@ func New(brokerURL string, opts ...Option) (*Engine, *Client, error) {
 		opt(&defaultOpts)
 	}
 
-	cfg := buildConfig(defaultOpts, brokerURL)
+	cfg := buildConfig(defaultOpts)
 
 	var store broker.Broker
 	var err error
@@ -50,42 +50,7 @@ func New(brokerURL string, opts ...Option) (*Engine, *Client, error) {
 	return eng, cl, nil
 }
 
-// TestBroker is returned by NewTestEngine so tests can inspect retry and dead job state
-// without a real broker. It wraps the in-memory broker used by the test engine.
-type TestBroker struct {
-	b *broker.InMemoryBroker
-}
-
-// RetryJobs returns a copy of jobs currently in the retry set.
-func (t *TestBroker) RetryJobs() []*Job {
-	return t.b.RetryJobs()
-}
-
-// DeadJobs returns a copy of jobs in the dead set.
-func (t *TestBroker) DeadJobs() []*Job {
-	return t.b.DeadJobs()
-}
-
-// NewTestEngine creates an Engine and Client backed by an in-memory broker for
-// database-free testing. The third return value allows tests to inspect retry and dead
-// jobs. No Redis or other broker is required.
-func NewTestEngine(opts ...Option) (*Engine, *Client, *TestBroker, error) {
-	o := defaultOptions()
-	for _, opt := range opts {
-		opt(&o)
-	}
-	cfg := buildConfig(o, "")
-	b := broker.NewInMemoryBroker()
-	eng, err := newEngine(cfg, b)
-	if err != nil {
-		_ = b.Close()
-		return nil, nil, nil, err
-	}
-	cl := client.New(b, cfg.Logger)
-	return eng, cl, &TestBroker{b: b}, nil
-}
-
-func buildConfig(opts options, brokerURL string) *config.Config {
+func buildConfig(opts options) *config.Config {
 	timeoutSec := int(opts.timeout.Seconds())
 	if timeoutSec <= 0 {
 		timeoutSec = 8
@@ -108,23 +73,12 @@ func buildConfig(opts options, brokerURL string) *config.Config {
 		concurrency = 10000
 	}
 
-	redisTimeoutSec := int(opts.redisTimeout.Seconds())
-	if redisTimeoutSec <= 0 {
-		redisTimeoutSec = 5
-	}
-
 	return &config.Config{
 		Concurrency:       concurrency,
 		Timeout:           timeoutSec,
 		Queues:            qConfig,
 		Logger:            opts.logger,
 		RetryPollInterval: opts.retryPollInterval,
-		Redis: config.RedisConfig{
-			URL:                   brokerURL,
-			NetworkTimeout:        redisTimeoutSec,
-			UseTLS:                opts.useTLS,
-			TLSInsecureSkipVerify: opts.tlsInsecureSkip,
-		},
 	}
 }
 
@@ -164,18 +118,18 @@ func QuickStart(configPath string) (*Engine, *Client, error) {
 	}
 
 	url, opts := brokerURLAndOptsFromConfig(cfg)
-	b, err := broker.Open(cfg.Broker, url, opts)
+	store, err := broker.Open(cfg.Broker, url, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	eng, err := newEngine(cfg, b)
+	eng, err := newEngine(cfg, store)
 	if err != nil {
-		_ = b.Close()
+		_ = store.Close()
 		return nil, nil, err
 	}
 
-	cl := client.New(b, cfg.Logger)
+	cl := client.New(store, cfg.Logger)
 	client.SetGlobal(cl)
 	return eng, cl, nil
 }
