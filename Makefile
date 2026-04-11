@@ -1,4 +1,4 @@
-.PHONY: build test test-race run-example deps clean fmt vet lint help
+.PHONY: build test test-race test-cover run-example deps clean fmt vet lint help
 
 # Default target
 help:
@@ -7,17 +7,12 @@ help:
 	@echo "  build        - Build the example runner binary (./bin/crank-example)"
 	@echo "  test         - Run tests"
 	@echo "  test-race    - Run tests with race detector"
-	@echo "  run-example  - Run the example (examples/run); set REDIS_URL or use -config for YAML"
+	@echo "  test-cover   - Run tests with coverage report"
 	@echo "  deps         - Download and tidy Go modules"
 	@echo "  fmt          - Format code (gofmt)"
 	@echo "  vet          - Run go vet"
-	@echo "  lint         - Run golangci-lint (install if missing)"
+	@echo "  lint         - Run golangci-lint (installs if missing)"
 	@echo "  clean        - Remove build artifacts"
-
-# Build the example runner
-build:
-	@mkdir -p bin
-	go build -o bin/crank-example ./examples/run
 
 # Run tests
 test:
@@ -27,13 +22,9 @@ test:
 test-race:
 	go test -race ./...
 
-# Run the example (requires Redis unless using in-memory in tests)
-run-example: build
-	@echo "Run with: ./bin/crank-example"
-	@echo "  ./bin/crank-example              # fluent API, REDIS_URL or redis://localhost:6379/0"
-	@echo "  ./bin/crank-example -config      # use config/crank.yml"
-	@echo "  ./bin/crank-example -config -C path/to/crank.yml"
-	./bin/crank-example
+# Run tests with coverage
+test-cover:
+	go test -cover ./...
 
 # Install/update dependencies
 deps:
@@ -50,7 +41,7 @@ vet:
 
 # Lint (requires golangci-lint)
 lint:
-	@command -v golangci-lint >/dev/null 2>&1 || (echo "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest" && exit 1)
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest; }
 	golangci-lint run
 
 # Clean build artifacts
