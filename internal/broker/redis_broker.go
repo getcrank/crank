@@ -117,13 +117,17 @@ return {KEYS[1], val}
 
 const redisProcessingKey = "processing"
 
+// DefaultLeaseDuration is the visibility timeout for dequeued jobs.
+// A job must be Ack'd within this window or the reaper will reclaim it.
+const DefaultLeaseDuration = 5 * time.Minute
+
 func (r *RedisBroker) Dequeue(queues []string, timeout time.Duration) (*payload.Job, string, error) {
 	deadline := time.Now().Add(timeout)
 
 	for {
 		for _, queueName := range queues {
 			queueKey := fmt.Sprintf("queue:%s", queueName)
-			leaseExp := float64(time.Now().Add(5 * time.Minute).Unix())
+			leaseExp := float64(time.Now().Add(DefaultLeaseDuration).Unix())
 
 			result, err := dequeueAndLeaseScript.Run(r.ctx, r.client,
 				[]string{queueKey, redisProcessingKey},
@@ -141,10 +145,12 @@ func (r *RedisBroker) Dequeue(queues []string, timeout time.Duration) (*payload.
 			}
 
 			returnedQueueName := result[0][6:] // strip "queue:" prefix
-			job, err := payload.FromJSON([]byte(result[1]))
+			rawBytes := []byte(result[1])
+			job, err := payload.FromJSON(rawBytes)
 			if err != nil {
 				return nil, "", fmt.Errorf("failed to deserialize job: %w", err)
 			}
+			job.RawPayload = rawBytes
 			return job, returnedQueueName, nil
 		}
 
@@ -155,53 +161,80 @@ func (r *RedisBroker) Dequeue(queues []string, timeout time.Duration) (*payload.
 	}
 }
 
+// rawOrSerialize returns RawPayload if set (exact dequeue bytes), else serializes the job.
+func rawOrSerialize(job *payload.Job) ([]byte, error) {
+	if len(job.RawPayload) > 0 {
+		return job.RawPayload, nil
+	}
+	return job.ToJSON()
+}
+
 // Ack removes a job from the processing set after its outcome is handled.
 func (r *RedisBroker) Ack(job *payload.Job) error {
-	data, err := job.ToJSON()
+	data, err := rawOrSerialize(job)
 	if err != nil {
 		return fmt.Errorf("failed to serialize job for ack: %w", err)
 	}
 	return r.client.ZRem(r.ctx, redisProcessingKey, data).Err()
 }
 
-// Nack removes a job from the processing set and re-enqueues it.
+// nackScript atomically removes from processing and re-enqueues.
+// KEYS[1]=processing key, KEYS[2]=queue key  ARGV[1]=member
+var nackScript = redis.NewScript(`
+redis.call('ZREM', KEYS[1], ARGV[1])
+redis.call('LPUSH', KEYS[2], ARGV[1])
+return 1
+`)
+
+// Nack removes a job from the processing set and re-enqueues it atomically.
 func (r *RedisBroker) Nack(job *payload.Job) error {
-	data, err := job.ToJSON()
+	data, err := rawOrSerialize(job)
 	if err != nil {
 		return fmt.Errorf("failed to serialize job for nack: %w", err)
 	}
-	pipe := r.client.Pipeline()
-	pipe.ZRem(r.ctx, redisProcessingKey, data)
 	queueKey := fmt.Sprintf("queue:%s", job.Queue)
-	pipe.LPush(r.ctx, queueKey, data)
-	_, err = pipe.Exec(r.ctx)
-	return err
+	return nackScript.Run(r.ctx, r.client,
+		[]string{redisProcessingKey, queueKey},
+		data,
+	).Err()
 }
 
-// ReapOrphanedJobs finds jobs in the processing set whose lease expired and
-// removes them. The caller re-enqueues the returned jobs.
-func (r *RedisBroker) ReapOrphanedJobs(lease time.Duration) ([]*payload.Job, error) {
-	cutoff := float64(time.Now().Add(-lease).Unix())
-	results, err := r.client.ZRangeByScore(r.ctx, redisProcessingKey, &redis.ZRangeBy{
-		Min: "0", Max: fmt.Sprintf("%.0f", cutoff), Offset: 0, Count: 100,
-	}).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get orphaned jobs: %w", err)
-	}
-	if len(results) == 0 {
+// reapScript atomically finds and removes expired members from the processing set.
+// KEYS[1]=processing key  ARGV[1]=cutoff score  ARGV[2]=limit
+// Returns removed members.
+var reapScript = redis.NewScript(`
+local expired = redis.call('ZRANGEBYSCORE', KEYS[1], '0', ARGV[1], 'LIMIT', 0, ARGV[2])
+for _, member in ipairs(expired) do
+    redis.call('ZREM', KEYS[1], member)
+end
+return expired
+`)
+
+// ReapOrphanedJobs atomically finds and removes jobs whose lease expiry
+// (stored as the sorted set score) is before now. The caller re-enqueues them.
+func (r *RedisBroker) ReapOrphanedJobs(_ time.Duration) ([]*payload.Job, error) {
+	// Score is the absolute lease expiry timestamp. Anything with score < now has expired.
+	cutoff := float64(time.Now().Unix())
+	results, err := reapScript.Run(r.ctx, r.client,
+		[]string{redisProcessingKey},
+		cutoff, 100,
+	).StringSlice()
+	if err == redis.Nil {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to reap orphaned jobs: %w", err)
 	}
 
 	var orphaned []*payload.Job
 	for _, data := range results {
-		if err := r.client.ZRem(r.ctx, redisProcessingKey, data).Err(); err != nil {
-			continue
-		}
 		job, err := payload.FromJSON([]byte(data))
 		if err != nil {
+			log.Printf("WARNING: orphaned job removed from processing but failed to deserialize: %v", err)
 			continue
 		}
 		job.State = payload.JobStatePending
+		job.RawPayload = nil // clear stale raw payload
 		orphaned = append(orphaned, job)
 	}
 	return orphaned, nil

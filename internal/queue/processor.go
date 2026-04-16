@@ -201,9 +201,12 @@ func (p *Processor) fetcher() {
 			case <-p.ctx.Done():
 				job.State = payload.JobStatePending
 				if err := p.broker.Enqueue(q, job); err != nil {
-					p.log.Error("failed to re-enqueue job on shutdown", "jid", job.JID, "queue", q, "err", err)
+					p.log.Error("failed to re-enqueue job on shutdown, reaper will recover", "jid", job.JID, "queue", q, "err", err)
+				} else {
+					if ackErr := p.broker.Ack(job); ackErr != nil {
+						p.log.Warn("ack failed on shutdown", "jid", job.JID, "err", ackErr)
+					}
 				}
-				_ = p.broker.Ack(job)
 				return
 			}
 		}
@@ -332,8 +335,6 @@ func (p *Processor) reaperLoop() {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
-	lease := p.cfg.GetTimeout() + 30*time.Second
-
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -342,7 +343,7 @@ func (p *Processor) reaperLoop() {
 		case <-p.ctx.Done():
 			return
 		case <-ticker.C:
-			orphaned, err := p.broker.ReapOrphanedJobs(lease)
+			orphaned, err := p.broker.ReapOrphanedJobs(0)
 			if err != nil {
 				p.log.Warn("reaper failed", "err", err)
 				continue
