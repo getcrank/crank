@@ -135,16 +135,16 @@ func TestInMemoryBroker_ReapOrphanedJobs(t *testing.T) {
 	b.Enqueue("default", job)
 	b.Dequeue([]string{"default"}, time.Second)
 
-	// With a very large lease, nothing should be reaped
-	orphaned, err := b.ReapOrphanedJobs(1 * time.Hour)
+	// Lease is still valid (5 min in the future), nothing should be reaped
+	orphaned, err := b.ReapOrphanedJobs(0)
 	if err != nil {
 		t.Fatalf("ReapOrphanedJobs: %v", err)
 	}
 	if len(orphaned) != 0 {
-		t.Errorf("expected 0 orphaned with large lease, got %d", len(orphaned))
+		t.Errorf("expected 0 orphaned (lease not expired), got %d", len(orphaned))
 	}
 
-	// Manually expire the lease by manipulating the processing entry
+	// Manually expire the lease by setting it to the past
 	b.mu.Lock()
 	if len(b.processing) > 0 {
 		b.processing[0].LeaseExp = time.Now().Add(-10 * time.Minute)

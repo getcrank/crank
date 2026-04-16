@@ -57,8 +57,8 @@ func (m *InMemoryBroker) Enqueue(queue string, job *payload.Job) error {
 	return nil
 }
 
-// defaultLeaseDuration is the visibility timeout for dequeued jobs.
-const defaultLeaseDuration = 5 * time.Minute
+// Uses the shared DefaultLeaseDuration from redis_broker.go.
+// Both brokers use the same visibility timeout for consistency.
 
 // Dequeue pops a job from the queue and moves it to the processing set with a lease.
 // The caller must Ack or Nack the job. Returns (nil, "", nil) on timeout.
@@ -84,7 +84,7 @@ func (m *InMemoryBroker) Dequeue(queues []string, timeout time.Duration) (*paylo
 				m.processing = append(m.processing, processingEntry{
 					Job:      job,
 					Queue:    q,
-					LeaseExp: time.Now().Add(defaultLeaseDuration),
+					LeaseExp: time.Now().Add(DefaultLeaseDuration),
 				})
 				m.mu.Unlock()
 				return job, q, nil
@@ -134,17 +134,17 @@ func (m *InMemoryBroker) Nack(job *payload.Job) error {
 	return nil
 }
 
-// ReapOrphanedJobs returns jobs in the processing set whose lease has expired
-// (older than lease duration) and removes them from the processing set.
-// The caller is responsible for re-enqueuing them.
-func (m *InMemoryBroker) ReapOrphanedJobs(lease time.Duration) ([]*payload.Job, error) {
+// ReapOrphanedJobs returns jobs in the processing set whose lease expiry
+// is before now and removes them. The caller re-enqueues them.
+// The lease parameter is ignored — expiry is absolute (set at dequeue time).
+func (m *InMemoryBroker) ReapOrphanedJobs(_ time.Duration) ([]*payload.Job, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	cutoff := time.Now().Add(-lease)
+	now := time.Now()
 	var orphaned []*payload.Job
-	remaining := m.processing[:0]
+	remaining := make([]processingEntry, 0, len(m.processing))
 	for _, e := range m.processing {
-		if e.LeaseExp.Before(cutoff) {
+		if e.LeaseExp.Before(now) {
 			e.Job.State = payload.JobStatePending
 			orphaned = append(orphaned, e.Job)
 		} else {
