@@ -53,35 +53,6 @@ func TestRedisBroker_DequeueAndAck(t *testing.T) {
 	}
 }
 
-func TestRedisBroker_Nack(t *testing.T) {
-	s := miniredis.RunT(t)
-	r, err := NewRedisBroker(fmt.Sprintf("redis://%s/0", s.Addr()), time.Second)
-	if err != nil {
-		t.Fatalf("NewRedisBroker: %v", err)
-	}
-	t.Cleanup(func() { _ = r.Close() })
-
-	job := payload.NewJob("W", "default", "arg1")
-	r.Enqueue("default", job)
-	got, _, _ := r.Dequeue([]string{"default"}, time.Second)
-
-	if err := r.Nack(got); err != nil {
-		t.Fatalf("Nack: %v", err)
-	}
-
-	// Processing should be empty
-	members, _ := s.ZMembers(redisProcessingKey)
-	if len(members) != 0 {
-		t.Errorf("processing set size after Nack = %d, want 0", len(members))
-	}
-
-	// Job should be back in the queue
-	queueSize, _ := r.GetQueueSize("default")
-	if queueSize != 1 {
-		t.Errorf("queue size after Nack = %d, want 1", queueSize)
-	}
-}
-
 func TestRedisBroker_ReapOrphanedJobs(t *testing.T) {
 	s := miniredis.RunT(t)
 	r, err := NewRedisBroker(fmt.Sprintf("redis://%s/0", s.Addr()), time.Second)

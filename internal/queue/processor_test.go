@@ -45,7 +45,6 @@ func (b *spyBroker) Dequeue([]string, time.Duration) (*payload.Job, string, erro
 	return nil, "", nil
 }
 func (b *spyBroker) Ack(*payload.Job) error                                 { return nil }
-func (b *spyBroker) Nack(*payload.Job) error                                { return nil }
 func (b *spyBroker) ReapOrphanedJobs(time.Duration) ([]*payload.Job, error) { return nil, nil }
 func (b *spyBroker) AddToRetry(j *payload.Job, at time.Time) error {
 	b.retry = append(b.retry, j)
@@ -58,7 +57,6 @@ func (b *spyBroker) RemoveFromRetry(j *payload.Job) error {
 	return nil
 }
 func (b *spyBroker) AddToDead(j *payload.Job) error            { b.dead = append(b.dead, j); return nil }
-func (b *spyBroker) GetDeadJobs(int64) ([]*payload.Job, error) { return nil, nil }
 func (b *spyBroker) GetQueueSize(string) (int64, error)        { return 0, nil }
 func (b *spyBroker) DeleteKey(string) error                    { return nil }
 func (b *spyBroker) RecordSuccess(*payload.Job) error          { return nil }

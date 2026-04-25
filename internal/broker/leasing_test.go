@@ -76,57 +76,6 @@ func TestInMemoryBroker_AckIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestInMemoryBroker_NackReenqueues(t *testing.T) {
-	b := NewInMemoryBroker()
-	defer b.Close()
-
-	job := payload.NewJob("W", "default")
-	b.Enqueue("default", job)
-	got, _, _ := b.Dequeue([]string{"default"}, time.Second)
-
-	if err := b.Nack(got); err != nil {
-		t.Fatalf("Nack: %v", err)
-	}
-
-	// Should be back in the queue
-	size, _ := b.GetQueueSize("default")
-	if size != 1 {
-		t.Errorf("queue size = %d, want 1 after Nack", size)
-	}
-
-	// Should not be in processing
-	processing := b.ProcessingJobs()
-	if len(processing) != 0 {
-		t.Errorf("processing count = %d, want 0 after Nack", len(processing))
-	}
-
-	// Should be re-dequeue-able
-	got2, _, err := b.Dequeue([]string{"default"}, time.Second)
-	if err != nil {
-		t.Fatalf("re-Dequeue: %v", err)
-	}
-	if got2.JID != job.JID {
-		t.Errorf("re-dequeued JID = %q, want %q", got2.JID, job.JID)
-	}
-}
-
-func TestInMemoryBroker_NackIsIdempotent(t *testing.T) {
-	b := NewInMemoryBroker()
-	defer b.Close()
-
-	job := payload.NewJob("W", "default")
-	b.Enqueue("default", job)
-	got, _, _ := b.Dequeue([]string{"default"}, time.Second)
-
-	b.Nack(got)
-	b.Nack(got) // second call should be no-op
-
-	size, _ := b.GetQueueSize("default")
-	if size != 1 {
-		t.Errorf("queue size = %d, want 1 (not double-enqueued)", size)
-	}
-}
-
 func TestInMemoryBroker_ReapOrphanedJobs(t *testing.T) {
 	b := NewInMemoryBroker()
 	defer b.Close()
