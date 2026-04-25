@@ -101,7 +101,7 @@ func TestNew_WithCustomBroker_ProcessesJob(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	jid, err := client.Enqueue(context.Background(),"CustomWorker", "default", "hello")
+	jid, err := client.Enqueue(context.Background(), "CustomWorker", "default", "hello")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -134,4 +134,3 @@ func TestNew_WithCustomBroker_TakesPrecedenceOverWithBroker(t *testing.T) {
 	}
 	_ = mb.Close()
 }
-

@@ -42,7 +42,7 @@ func TestE2E_ConcurrentJobProcessing(t *testing.T) {
 	defer engine.Stop()
 
 	for i := 0; i < jobCount; i++ {
-		if _, err := client.Enqueue(context.Background(),"ConcurrentWorker", "default", i); err != nil {
+		if _, err := client.Enqueue(context.Background(), "ConcurrentWorker", "default", i); err != nil {
 			t.Fatalf("Enqueue(%d): %v", i, err)
 		}
 	}
@@ -103,8 +103,8 @@ func TestE2E_QueueWeightDistribution(t *testing.T) {
 	defer engine.Stop()
 
 	for i := 0; i < 4; i++ {
-		client.Enqueue(context.Background(),"WeightWorker", "high", "high")
-		client.Enqueue(context.Background(),"WeightWorker", "low", "low")
+		client.Enqueue(context.Background(), "WeightWorker", "high", "high")
+		client.Enqueue(context.Background(), "WeightWorker", "low", "low")
 	}
 
 	go func() { wg.Wait(); close(allDone) }()
@@ -149,7 +149,7 @@ func TestE2E_RetryWithBackoffCap(t *testing.T) {
 	defer engine.Stop()
 
 	// Enqueue with retry=2 so it fails 3 times total then goes to dead
-	_, err = client.EnqueueWithOptions(context.Background(),"RetryWorker", "default",
+	_, err = client.EnqueueWithOptions(context.Background(), "RetryWorker", "default",
 		&crank.JobOptions{Retry: intPtr(2)}, "test")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -188,7 +188,7 @@ func TestE2E_MaxRetryCountCap(t *testing.T) {
 
 	// Try to set retry to a huge number
 	hugeRetry := 1000
-	jid, err := client.EnqueueWithOptions(context.Background(),"SomeWorker", "default",
+	jid, err := client.EnqueueWithOptions(context.Background(), "SomeWorker", "default",
 		&crank.JobOptions{Retry: &hugeRetry}, "test")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -224,7 +224,7 @@ func TestE2E_CircuitBreakerBlocking(t *testing.T) {
 
 	// Enqueue multiple jobs with retry=0 so they go straight to dead
 	for i := 0; i < 10; i++ {
-		client.EnqueueWithOptions(context.Background(),"BreakerWorker", "default",
+		client.EnqueueWithOptions(context.Background(), "BreakerWorker", "default",
 			&crank.JobOptions{Retry: intPtr(0)}, i)
 	}
 
@@ -322,7 +322,7 @@ func TestE2E_MiddlewareOrdering(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	client.Enqueue(context.Background(),"OrderWorker", "default")
+	client.Enqueue(context.Background(), "OrderWorker", "default")
 
 	select {
 	case <-done:
@@ -377,7 +377,7 @@ func TestE2E_GlobalEnqueueAndClient(t *testing.T) {
 	defer engine.Stop()
 
 	// Use the global Enqueue function
-	jid, err := crank.Enqueue(context.Background(),"GlobalWorker", "default", "hello")
+	jid, err := crank.Enqueue(context.Background(), "GlobalWorker", "default", "hello")
 	if err != nil {
 		t.Fatalf("global Enqueue: %v", err)
 	}
@@ -395,7 +395,7 @@ func TestE2E_GlobalEnqueueAndClient(t *testing.T) {
 // TestE2E_GlobalEnqueueWithoutClient verifies proper error without global client.
 func TestE2E_GlobalEnqueueWithoutClient(t *testing.T) {
 	crank.SetGlobalClient(nil)
-	_, err := crank.Enqueue(context.Background(),"SomeWorker", "default", "arg")
+	_, err := crank.Enqueue(context.Background(), "SomeWorker", "default", "arg")
 	if err == nil {
 		t.Error("expected error when global client is nil")
 	}
@@ -424,7 +424,7 @@ func TestE2E_EngineStats(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	client.Enqueue(context.Background(),"StatsWorker", "default", "test")
+	client.Enqueue(context.Background(), "StatsWorker", "default", "test")
 
 	select {
 	case <-done:
@@ -464,7 +464,7 @@ func TestE2E_WorkerPanicRecovery(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	_, err = client.EnqueueWithOptions(context.Background(),"PanicWorker", "default",
+	_, err = client.EnqueueWithOptions(context.Background(), "PanicWorker", "default",
 		&crank.JobOptions{Retry: intPtr(0)}, "test")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -517,7 +517,7 @@ func TestE2E_JobTimeoutEnforced(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	_, err = client.EnqueueWithOptions(context.Background(),"SlowWorker", "default",
+	_, err = client.EnqueueWithOptions(context.Background(), "SlowWorker", "default",
 		&crank.JobOptions{Retry: intPtr(0)}, "test")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -573,8 +573,8 @@ func TestE2E_RegisterMany(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	client.Enqueue(context.Background(),"Worker1", "default", "a")
-	client.Enqueue(context.Background(),"Worker2", "default", "b")
+	client.Enqueue(context.Background(), "Worker1", "default", "a")
+	client.Enqueue(context.Background(), "Worker2", "default", "b")
 
 	deadline := time.After(5 * time.Second)
 	for {
@@ -606,7 +606,7 @@ func TestE2E_UnregisteredWorkerGoesToDead(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	_, err = client.EnqueueWithOptions(context.Background(),"NonExistentWorker", "default",
+	_, err = client.EnqueueWithOptions(context.Background(), "NonExistentWorker", "default",
 		&crank.JobOptions{Retry: intPtr(0)}, "test")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)

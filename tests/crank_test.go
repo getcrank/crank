@@ -40,7 +40,7 @@ func TestNewTestEngine_ProcessesJobEndToEnd(t *testing.T) {
 	defer engine.Stop()
 
 	crank.SetGlobalClient(client)
-	jid, err := client.Enqueue(context.Background(),"TestWorker", "default", "arg1", 42)
+	jid, err := client.Enqueue(context.Background(), "TestWorker", "default", "arg1", 42)
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestNewTestEngine_FailedJobMovesToRetryThenDead(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	_, err = client.EnqueueWithOptions(context.Background(),"FailingWorker", "default", &crank.JobOptions{Retry: intPtr(0)}, "x")
+	_, err = client.EnqueueWithOptions(context.Background(), "FailingWorker", "default", &crank.JobOptions{Retry: intPtr(0)}, "x")
 	if err != nil {
 		t.Fatalf("EnqueueWithOptions: %v", err)
 	}
