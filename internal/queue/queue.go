@@ -32,6 +32,7 @@ func (q *Queue) Clear() error {
 
 type Stats struct {
 	Processed int64            `json:"processed"`
+	Failed    int64            `json:"failed"`
 	Retry     int64            `json:"retry"`
 	Dead      int64            `json:"dead"`
 	Queues    map[string]int64 `json:"queues"`
@@ -100,6 +101,10 @@ func GetStats(b broker.Broker) (*Stats, error) {
 	if err != nil {
 		return nil, err
 	}
+	failed, err := getInt64(statsMap, "failed")
+	if err != nil {
+		return nil, err
+	}
 	retry, err := getInt64(statsMap, "retry")
 	if err != nil {
 		return nil, err
@@ -115,6 +120,7 @@ func GetStats(b broker.Broker) (*Stats, error) {
 
 	return &Stats{
 		Processed: processed,
+		Failed:    failed,
 		Retry:     retry,
 		Dead:      dead,
 		Queues:    queues,

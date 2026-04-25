@@ -235,11 +235,17 @@ func (p *Processor) processJob(job *payload.Job, queue string) {
 		job.State = payload.JobStateFailed
 		p.log.Error("job failed", "jid", job.JID, "class", job.Class, "queue", queue, "err", err, "dur", duration)
 		p.emitEvent(JobEvent{Type: EventJobFailed, Job: job, Queue: queue, Duration: duration, Err: err})
+		if recErr := p.broker.RecordFailure(job); recErr != nil {
+			p.log.Warn("record failure stat failed", "jid", job.JID, "err", recErr)
+		}
 		p.handleFailure(job, err)
 	} else {
 		job.State = payload.JobStateSuccess
 		p.log.Info("job processed", "jid", job.JID, "class", job.Class, "queue", queue, "dur", duration)
 		p.emitEvent(JobEvent{Type: EventJobSucceeded, Job: job, Queue: queue, Duration: duration})
+		if recErr := p.broker.RecordSuccess(job); recErr != nil {
+			p.log.Warn("record success stat failed", "jid", job.JID, "err", recErr)
+		}
 		if ackErr := p.broker.Ack(job); ackErr != nil {
 			p.log.Warn("ack failed", "jid", job.JID, "err", ackErr)
 		}

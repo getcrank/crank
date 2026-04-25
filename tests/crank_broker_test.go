@@ -2,165 +2,14 @@ package crank_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/ogwurujohnson/crank"
+	"github.com/ogwurujohnson/crank/internal/broker"
 )
-
-// stubBroker is a minimal crank.Broker for testing WithCustomBroker.
-// It mirrors InMemoryBroker behaviour just enough to run the engine.
-type stubBroker struct {
-	mu        sync.Mutex
-	queues    map[string][]*crank.Job
-	retry     []retryItem
-	dead      []*crank.Job
-	processed int64
-	done      chan struct{}
-}
-
-type retryItem struct {
-	job     *crank.Job
-	retryAt time.Time
-}
-
-func newStubBroker() *stubBroker {
-	return &stubBroker{
-		queues: make(map[string][]*crank.Job),
-		done:   make(chan struct{}),
-	}
-}
-
-func (s *stubBroker) Enqueue(queue string, job *crank.Job) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	select {
-	case <-s.done:
-		return fmt.Errorf("broker closed")
-	default:
-	}
-	s.queues[queue] = append(s.queues[queue], job)
-	s.processed++
-	return nil
-}
-
-func (s *stubBroker) Dequeue(queues []string, timeout time.Duration) (*crank.Job, string, error) {
-	deadline := time.Now().Add(timeout)
-	tick := 5 * time.Millisecond
-	ticker := time.NewTicker(tick)
-	defer ticker.Stop()
-	for {
-		s.mu.Lock()
-		for _, q := range queues {
-			if len(s.queues[q]) > 0 {
-				job := s.queues[q][0]
-				s.queues[q] = s.queues[q][1:]
-				s.mu.Unlock()
-				return job, q, nil
-			}
-		}
-		s.mu.Unlock()
-		if time.Now().After(deadline) {
-			return nil, "", nil
-		}
-		select {
-		case <-s.done:
-			return nil, "", nil
-		case <-ticker.C:
-		}
-	}
-}
-
-func (s *stubBroker) AddToRetry(job *crank.Job, retryAt time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.retry = append(s.retry, retryItem{job: job, retryAt: retryAt})
-	return nil
-}
-
-func (s *stubBroker) GetRetryJobs(limit int64) ([]*crank.Job, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := time.Now()
-	var out []*crank.Job
-	for i := 0; i < len(s.retry) && int64(len(out)) < limit; i++ {
-		if !s.retry[i].retryAt.After(now) {
-			out = append(out, s.retry[i].job)
-		}
-	}
-	return out, nil
-}
-
-func (s *stubBroker) RemoveFromRetry(job *crank.Job) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i, e := range s.retry {
-		if e.job != nil && e.job.JID == job.JID {
-			s.retry = append(s.retry[:i], s.retry[i+1:]...)
-			return nil
-		}
-	}
-	return nil
-}
-
-func (s *stubBroker) AddToDead(job *crank.Job) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.dead = append(s.dead, job)
-	return nil
-}
-
-func (s *stubBroker) GetDeadJobs(limit int64) ([]*crank.Job, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	n := int(limit)
-	if n > len(s.dead) {
-		n = len(s.dead)
-	}
-	if n == 0 {
-		return nil, nil
-	}
-	out := make([]*crank.Job, n)
-	copy(out, s.dead[len(s.dead)-n:])
-	return out, nil
-}
-
-func (s *stubBroker) GetQueueSize(queue string) (int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return int64(len(s.queues[queue])), nil
-}
-
-func (s *stubBroker) Ack(job *crank.Job) error                                   { return nil }
-func (s *stubBroker) Nack(job *crank.Job) error                                  { return nil }
-func (s *stubBroker) ReapOrphanedJobs(lease time.Duration) ([]*crank.Job, error) { return nil, nil }
-func (s *stubBroker) DeleteKey(key string) error                                 { return nil }
-
-func (s *stubBroker) GetStats() (map[string]interface{}, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return map[string]interface{}{
-		"processed": s.processed,
-		"retry":     int64(len(s.retry)),
-		"dead":      int64(len(s.dead)),
-		"queues":    map[string]int64{},
-	}, nil
-}
-
-func (s *stubBroker) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	select {
-	case <-s.done:
-	default:
-		close(s.done)
-	}
-	return nil
-}
 
 // ---------------------------------------------------------------------------
 // Tests: New() enforces broker provisioning
@@ -211,9 +60,9 @@ func TestNew_WithBrokerUnknown_ReturnsError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNew_WithCustomBroker_Succeeds(t *testing.T) {
-	sb := newStubBroker()
+	mb := broker.NewInMemoryBroker()
 	engine, client, err := crank.New("",
-		crank.WithCustomBroker(sb),
+		crank.WithCustomBroker(mb),
 		crank.WithConcurrency(1),
 		crank.WithTimeout(2*time.Second),
 	)
@@ -226,13 +75,13 @@ func TestNew_WithCustomBroker_Succeeds(t *testing.T) {
 	if client == nil {
 		t.Fatal("expected non-nil client")
 	}
-	_ = sb.Close()
+	_ = mb.Close()
 }
 
 func TestNew_WithCustomBroker_ProcessesJob(t *testing.T) {
-	sb := newStubBroker()
+	mb := broker.NewInMemoryBroker()
 	engine, client, err := crank.New("",
-		crank.WithCustomBroker(sb),
+		crank.WithCustomBroker(mb),
 		crank.WithConcurrency(1),
 		crank.WithTimeout(2*time.Second),
 	)
@@ -270,12 +119,12 @@ func TestNew_WithCustomBroker_ProcessesJob(t *testing.T) {
 }
 
 func TestNew_WithCustomBroker_TakesPrecedenceOverWithBroker(t *testing.T) {
-	sb := newStubBroker()
+	mb := broker.NewInMemoryBroker()
 	// Provide both WithBroker (unsupported kind) AND WithCustomBroker.
 	// Custom broker should win; engine should create successfully.
 	engine, _, err := crank.New("",
 		crank.WithBroker("kafka"), // would fail on its own
-		crank.WithCustomBroker(sb),
+		crank.WithCustomBroker(mb),
 		crank.WithConcurrency(1),
 	)
 	if err != nil {
@@ -284,7 +133,7 @@ func TestNew_WithCustomBroker_TakesPrecedenceOverWithBroker(t *testing.T) {
 	if engine == nil {
 		t.Fatal("expected non-nil engine")
 	}
-	_ = sb.Close()
+	_ = mb.Close()
 }
 
 // ---------------------------------------------------------------------------

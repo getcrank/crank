@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
+	"github.com/ogwurujohnson/crank/internal/broker"
 	"github.com/ogwurujohnson/crank/internal/payload"
 )
 
@@ -45,42 +45,13 @@ func (l *spyLogger) findByMsg(msg string) []logEntry {
 	return found
 }
 
-// stubBroker is a minimal Broker for client tests.
-type stubBroker struct {
-	enqueued []*payload.Job
-	failNext bool
-}
-
-func (b *stubBroker) Enqueue(queue string, job *payload.Job) error {
-	if b.failNext {
-		return fmt.Errorf("enqueue failed")
-	}
-	b.enqueued = append(b.enqueued, job)
-	return nil
-}
-func (b *stubBroker) Dequeue([]string, time.Duration) (*payload.Job, string, error) {
-	return nil, "", nil
-}
-func (b *stubBroker) Ack(*payload.Job) error                                 { return nil }
-func (b *stubBroker) Nack(*payload.Job) error                                { return nil }
-func (b *stubBroker) ReapOrphanedJobs(time.Duration) ([]*payload.Job, error) { return nil, nil }
-func (b *stubBroker) AddToRetry(*payload.Job, time.Time) error               { return nil }
-func (b *stubBroker) GetRetryJobs(int64) ([]*payload.Job, error)             { return nil, nil }
-func (b *stubBroker) RemoveFromRetry(*payload.Job) error                     { return nil }
-func (b *stubBroker) AddToDead(*payload.Job) error                           { return nil }
-func (b *stubBroker) GetDeadJobs(int64) ([]*payload.Job, error)              { return nil, nil }
-func (b *stubBroker) GetQueueSize(string) (int64, error)                     { return 0, nil }
-func (b *stubBroker) DeleteKey(string) error                                 { return nil }
-func (b *stubBroker) GetStats() (map[string]interface{}, error)              { return nil, nil }
-func (b *stubBroker) Close() error                                           { return nil }
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 func TestEnqueue_LogsJobEnqueued(t *testing.T) {
 	spy := &spyLogger{}
-	c := New(&stubBroker{}, spy)
+	c := New(broker.NewInMemoryBroker(), spy)
 
 	jid, err := c.Enqueue("EmailWorker", "default", "user@example.com")
 	if err != nil {
@@ -103,7 +74,7 @@ func TestEnqueue_LogsJobEnqueued(t *testing.T) {
 
 func TestEnqueueWithOptions_LogsJobEnqueued(t *testing.T) {
 	spy := &spyLogger{}
-	c := New(&stubBroker{}, spy)
+	c := New(broker.NewInMemoryBroker(), spy)
 
 	retry := 3
 	jid, err := c.EnqueueWithOptions("ReportWorker", "critical", &payload.JobOptions{Retry: &retry}, "arg1")
@@ -122,7 +93,7 @@ func TestEnqueueWithOptions_LogsJobEnqueued(t *testing.T) {
 }
 
 func TestEnqueue_NoLogWhenLoggerNil(t *testing.T) {
-	c := New(&stubBroker{}, nil)
+	c := New(broker.NewInMemoryBroker(), nil)
 
 	_, err := c.Enqueue("Worker", "default")
 	if err != nil {
@@ -133,7 +104,9 @@ func TestEnqueue_NoLogWhenLoggerNil(t *testing.T) {
 
 func TestEnqueue_NoLogOnError(t *testing.T) {
 	spy := &spyLogger{}
-	c := New(&stubBroker{failNext: true}, spy)
+	mb := broker.NewInMemoryBroker()
+	_ = mb.Close() // closed broker makes Enqueue return an error
+	c := New(mb, spy)
 
 	_, err := c.Enqueue("Worker", "default")
 	if err == nil {

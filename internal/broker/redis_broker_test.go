@@ -123,10 +123,18 @@ func TestRedisBroker_GetStats(t *testing.T) {
 	if err := r.Enqueue("default", payload.NewJob("W", "default", 1)); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
-	if err := r.AddToRetry(payload.NewJob("W", "default", 2), time.Now().Add(-1*time.Second)); err != nil {
+	successJob := payload.NewJob("W", "default", 2)
+	if err := r.RecordSuccess(successJob); err != nil {
+		t.Fatalf("RecordSuccess: %v", err)
+	}
+	failJob := payload.NewJob("W", "default", 3)
+	if err := r.RecordFailure(failJob); err != nil {
+		t.Fatalf("RecordFailure: %v", err)
+	}
+	if err := r.AddToRetry(payload.NewJob("W", "default", 4), time.Now().Add(-1*time.Second)); err != nil {
 		t.Fatalf("AddToRetry: %v", err)
 	}
-	if err := r.AddToDead(payload.NewJob("W", "default", 3)); err != nil {
+	if err := r.AddToDead(payload.NewJob("W", "default", 5)); err != nil {
 		t.Fatalf("AddToDead: %v", err)
 	}
 
@@ -137,6 +145,9 @@ func TestRedisBroker_GetStats(t *testing.T) {
 
 	if stats["processed"] != int64(1) {
 		t.Errorf("processed = %v, want 1", stats["processed"])
+	}
+	if stats["failed"] != int64(1) {
+		t.Errorf("failed = %v, want 1", stats["failed"])
 	}
 	if stats["retry"] != int64(1) {
 		t.Errorf("retry = %v, want 1", stats["retry"])

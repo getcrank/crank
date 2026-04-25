@@ -93,15 +93,6 @@ func (r *RedisBroker) Enqueue(queue string, job *payload.Job) error {
 		return fmt.Errorf("failed to enqueue job: %w", err)
 	}
 
-	// Best-effort stat tracking; errors are non-fatal
-	_ = r.client.ZAdd(r.ctx, "stat:processed", &redis.Z{
-		Score:  float64(time.Now().Unix()),
-		Member: job.JID,
-	}).Err()
-
-	// Trim stat:processed to last 100,000 entries to prevent unbounded growth
-	_ = r.client.ZRemRangeByRank(r.ctx, "stat:processed", 0, -100001).Err()
-
 	return nil
 }
 
@@ -176,6 +167,26 @@ func (r *RedisBroker) Ack(job *payload.Job) error {
 		return fmt.Errorf("failed to serialize job for ack: %w", err)
 	}
 	return r.client.ZRem(r.ctx, redisProcessingKey, data).Err()
+}
+
+// recordStatEntry adds a job ID to a stat sorted set and trims to the last 100,000 entries.
+func (r *RedisBroker) recordStatEntry(key string, job *payload.Job) error {
+	_ = r.client.ZAdd(r.ctx, key, &redis.Z{
+		Score:  float64(time.Now().Unix()),
+		Member: job.JID,
+	}).Err()
+	_ = r.client.ZRemRangeByRank(r.ctx, key, 0, -100001).Err()
+	return nil
+}
+
+// RecordSuccess records a job as successfully processed in stat:processed.
+func (r *RedisBroker) RecordSuccess(job *payload.Job) error {
+	return r.recordStatEntry("stat:processed", job)
+}
+
+// RecordFailure records a job failure in stat:failed.
+func (r *RedisBroker) RecordFailure(job *payload.Job) error {
+	return r.recordStatEntry("stat:failed", job)
 }
 
 // nackScript atomically removes from processing and re-enqueues.
@@ -341,6 +352,12 @@ func (r *RedisBroker) GetStats() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("failed to get processed stats: %w", err)
 	}
 	stats["processed"] = processed
+
+	failed, err := r.client.ZCard(r.ctx, "stat:failed").Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get failed stats: %w", err)
+	}
+	stats["failed"] = failed
 
 	retry, err := r.client.ZCard(r.ctx, "retry").Result()
 	if err != nil {

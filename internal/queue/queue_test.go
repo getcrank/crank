@@ -37,6 +37,8 @@ func (m *mockBroker) AddToDead(*payload.Job) error                           { r
 func (m *mockBroker) GetDeadJobs(int64) ([]*payload.Job, error)              { return nil, nil }
 func (m *mockBroker) GetQueueSize(string) (int64, error)                     { return 0, nil }
 func (m *mockBroker) DeleteKey(string) error                                 { return nil }
+func (m *mockBroker) RecordSuccess(*payload.Job) error                       { return nil }
+func (m *mockBroker) RecordFailure(*payload.Job) error                       { return nil }
 func (m *mockBroker) Close() error                                           { return nil }
 
 var _ broker.Broker = (*mockBroker)(nil)
@@ -45,6 +47,7 @@ func TestGetStats_Valid(t *testing.T) {
 	b := &mockBroker{
 		stats: map[string]interface{}{
 			"processed": int64(10),
+			"failed":    int64(3),
 			"retry":     int64(1),
 			"dead":      int64(0),
 			"queues":    map[string]int64{"default": 5, "low": 2},
@@ -56,6 +59,7 @@ func TestGetStats_Valid(t *testing.T) {
 	}
 	want := &Stats{
 		Processed: 10,
+		Failed:    3,
 		Retry:     1,
 		Dead:      0,
 		Queues:    map[string]int64{"default": 5, "low": 2},
@@ -69,6 +73,7 @@ func TestGetStats_IntAndFloat64(t *testing.T) {
 	b := &mockBroker{
 		stats: map[string]interface{}{
 			"processed": float64(100),
+			"failed":    float64(5),
 			"retry":     int(2),
 			"dead":      float64(1),
 			"queues": map[string]interface{}{
@@ -83,6 +88,7 @@ func TestGetStats_IntAndFloat64(t *testing.T) {
 	}
 	want := &Stats{
 		Processed: 100,
+		Failed:    5,
 		Retry:     2,
 		Dead:      1,
 		Queues:    map[string]int64{"default": 3, "low": 1},
@@ -113,8 +119,8 @@ func TestGetStats_MissingKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("GetStats: expected error")
 	}
-	if !strings.Contains(err.Error(), `stats: missing or nil "retry"`) {
-		t.Errorf("err = %q, want substring %q", err.Error(), `stats: missing or nil "retry"`)
+	if !strings.Contains(err.Error(), `stats: missing or nil "failed"`) {
+		t.Errorf("err = %q, want substring %q", err.Error(), `stats: missing or nil "failed"`)
 	}
 }
 
@@ -122,6 +128,7 @@ func TestGetStats_InvalidType(t *testing.T) {
 	b := &mockBroker{
 		stats: map[string]interface{}{
 			"processed": int64(1),
+			"failed":    int64(0),
 			"retry":     int64(1),
 			"dead":      int64(1),
 			"queues":    "not a map",
