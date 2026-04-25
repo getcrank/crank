@@ -31,7 +31,7 @@ The SDK is a single Go module. The public API lives in the root package (`crank.
 
 ### Internal packages (`internal/`)
 
-- **broker** — `Broker` interface and implementations. `factory.go` contains `Open()` which routes by broker kind (redis/nats/rabbitmq) or infers from URL scheme. `redis_broker.go` is the production implementation; `memory.go` is the in-memory broker for tests.
+- **broker** — `Broker` interface and implementations. `factory.go` contains `Open()` which routes by broker kind (redis/nats/pgsql). `redis_broker.go` is the production implementation; `memory.go` is the in-memory broker for tests.
 - **queue** — Core processing engine. `processor.go` runs the polling loop, dispatches jobs to workers with timeout/context, handles retries and dead queue. `middleware.go` has the middleware chain (recovery, logging, circuit breaker). `breaker.go` is the circuit breaker. `worker.go` defines the `Worker` interface.
 - **client** — Job enqueueing. Supports instance-based and global (singleton) client patterns via `SetGlobal`/`GetGlobal`.
 - **payload** — `Job` struct, JSON serialization, `JobOptions`, validators (`MaxArgsCount`, `ClassAllowlist`, `ClassPattern`, `MaxPayloadSize`), and redactors for sensitive args.
