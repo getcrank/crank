@@ -29,6 +29,8 @@ type Broker interface {
 	GetDeadJobs(limit int64) ([]*payload.Job, error)
 	GetQueueSize(queue string) (int64, error)
 	DeleteKey(key string) error
+	RecordSuccess(job *payload.Job) error
+	RecordFailure(job *payload.Job) error
 	GetStats() (map[string]interface{}, error)
 	Close() error
 }

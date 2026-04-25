@@ -19,6 +19,7 @@ type InMemoryBroker struct {
 	retry      []retryEntry
 	dead       []*payload.Job
 	processed  int64
+	failed     int64
 	done       chan struct{}
 }
 
@@ -53,7 +54,6 @@ func (m *InMemoryBroker) Enqueue(queue string, job *payload.Job) error {
 	default:
 	}
 	m.queues[queue] = append(m.queues[queue], job)
-	m.processed++
 	return nil
 }
 
@@ -238,7 +238,23 @@ func (m *InMemoryBroker) DeleteKey(key string) error {
 	return nil
 }
 
-// GetStats returns processed count, retry count, dead count, and per-queue sizes.
+// RecordSuccess increments the processed counter.
+func (m *InMemoryBroker) RecordSuccess(_ *payload.Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.processed++
+	return nil
+}
+
+// RecordFailure increments the failed counter.
+func (m *InMemoryBroker) RecordFailure(_ *payload.Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failed++
+	return nil
+}
+
+// GetStats returns processed count, failed count, retry count, dead count, and per-queue sizes.
 func (m *InMemoryBroker) GetStats() (map[string]interface{}, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -248,6 +264,7 @@ func (m *InMemoryBroker) GetStats() (map[string]interface{}, error) {
 	}
 	return map[string]interface{}{
 		"processed":  m.processed,
+		"failed":     m.failed,
 		"processing": int64(len(m.processing)),
 		"retry":      int64(len(m.retry)),
 		"dead":       int64(len(m.dead)),
