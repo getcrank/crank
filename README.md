@@ -37,7 +37,7 @@ if err := engine.Start(); err != nil {
     log.Fatalf("engine start: %v", err)
 }
 
-jid, _ := crank.Enqueue("EmailWorker", "default", "user-123")
+jid, _ := crank.Enqueue(context.Background(), "EmailWorker", "default", "user-123")
 ```
 
 Or from a YAML config:
@@ -59,7 +59,7 @@ engine.Register("MyWorker", myWorker{})
 engine.Start()
 defer engine.Stop()
 
-client.Enqueue("MyWorker", "default", "arg1")
+client.Enqueue(context.Background(), "MyWorker", "default", "arg1")
 
 // Inspect state after processing
 retry := tb.RetryJobs()
@@ -77,7 +77,7 @@ dead := tb.DeadJobs()
 - **Middleware**: Built-in recovery, logging, and circuit breaker; extend with `engine.Use()`.
 - **Validation and redaction**: Global validators (`ClassAllowlist`, `MaxPayloadSize`, etc.) and argument redactors for safe logging.
 - **Lifecycle logging**: Enqueue, dequeue, processed, failed, and dead queue events logged when a logger is provided.
-- **Stats**: `engine.Stats()` returns processed, retry, dead, and per-queue counts.
+- **Stats**: `engine.Stats()` returns processed, failed, retry, dead, and per-queue counts.
 - **Global client**: `SetGlobalClient(client)` then `crank.Enqueue(...)` from anywhere.
 
 ## Benchmarks
