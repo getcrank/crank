@@ -61,7 +61,7 @@ func (m *InMemoryBroker) Enqueue(queue string, job *payload.Job) error {
 // Both brokers use the same visibility timeout for consistency.
 
 // Dequeue pops a job from the queue and moves it to the processing set with a lease.
-// The caller must Ack or Nack the job. Returns (nil, "", nil) on timeout.
+// The caller must Ack the job. Returns (nil, "", nil) on timeout.
 func (m *InMemoryBroker) Dequeue(queues []string, timeout time.Duration) (*payload.Job, string, error) {
 	deadline := time.Now().Add(timeout)
 	tick := 5 * time.Millisecond
@@ -112,22 +112,6 @@ func (m *InMemoryBroker) Ack(job *payload.Job) error {
 	for i, e := range m.processing {
 		if e.Job.JID == job.JID {
 			m.processing = append(m.processing[:i], m.processing[i+1:]...)
-			return nil
-		}
-	}
-	return nil
-}
-
-// Nack removes the job from the processing set and re-enqueues it to its
-// original queue for immediate reprocessing. Idempotent.
-func (m *InMemoryBroker) Nack(job *payload.Job) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i, e := range m.processing {
-		if e.Job.JID == job.JID {
-			m.processing = append(m.processing[:i], m.processing[i+1:]...)
-			job.State = payload.JobStatePending
-			m.queues[e.Queue] = append(m.queues[e.Queue], job)
 			return nil
 		}
 	}
@@ -199,25 +183,6 @@ func (m *InMemoryBroker) AddToDead(job *payload.Job) error {
 	defer m.mu.Unlock()
 	m.dead = append(m.dead, job)
 	return nil
-}
-
-// GetDeadJobs returns up to limit jobs from the dead set (newest first if we treat slice as LIFO).
-func (m *InMemoryBroker) GetDeadJobs(limit int64) ([]*payload.Job, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	n := int(limit)
-	if n < 0 {
-		n = 0
-	}
-	if n > len(m.dead) {
-		n = len(m.dead)
-	}
-	if n == 0 {
-		return nil, nil
-	}
-	out := make([]*payload.Job, n)
-	copy(out, m.dead[len(m.dead)-n:])
-	return out, nil
 }
 
 // GetQueueSize returns the number of jobs in the named queue.

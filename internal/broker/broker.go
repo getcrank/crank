@@ -13,20 +13,17 @@ import (
 //
 // Dequeue leases the job: it is moved to a processing set with a
 // visibility timeout. The caller must Ack (on success or after
-// scheduling retry/dead) or Nack (to re-enqueue immediately).
-// Jobs whose lease expires without an Ack are reclaimed by
-// ReapOrphanedJobs.
+// scheduling retry/dead). Jobs whose lease expires without an Ack
+// are reclaimed by ReapOrphanedJobs.
 type Broker interface {
 	Enqueue(queue string, job *payload.Job) error
 	Dequeue(queues []string, timeout time.Duration) (*payload.Job, string, error)
 	Ack(job *payload.Job) error
-	Nack(job *payload.Job) error
 	ReapOrphanedJobs(lease time.Duration) ([]*payload.Job, error)
 	AddToRetry(job *payload.Job, retryAt time.Time) error
 	GetRetryJobs(limit int64) ([]*payload.Job, error)
 	RemoveFromRetry(job *payload.Job) error
 	AddToDead(job *payload.Job) error
-	GetDeadJobs(limit int64) ([]*payload.Job, error)
 	GetQueueSize(queue string) (int64, error)
 	DeleteKey(key string) error
 	RecordSuccess(job *payload.Job) error

@@ -37,8 +37,8 @@ type Job struct {
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 
 	// RawPayload holds the exact bytes as stored in the broker at dequeue time.
-	// Used by Ack/Nack to remove the job from the processing set by exact match.
-	// Not serialized — populated by broker.Dequeue, consumed by broker.Ack/Nack.
+	// Used by Ack to remove the job from the processing set by exact match.
+	// Not serialized — populated by broker.Dequeue, consumed by broker.Ack.
 	RawPayload []byte `json:"-"`
 }
 

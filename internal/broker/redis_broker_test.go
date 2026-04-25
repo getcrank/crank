@@ -87,31 +87,6 @@ func TestRedisBroker_RetryLifecycle(t *testing.T) {
 	}
 }
 
-func TestRedisBroker_DeadLifecycle(t *testing.T) {
-	s := miniredis.RunT(t)
-	r, err := NewRedisBroker(fmt.Sprintf("redis://%s/0", s.Addr()), time.Second)
-	if err != nil {
-		t.Fatalf("NewRedisBroker: %v", err)
-	}
-	t.Cleanup(func() { _ = r.Close() })
-
-	j := payload.NewJob("W", "default", 1)
-	if err := r.AddToDead(j); err != nil {
-		t.Fatalf("AddToDead: %v", err)
-	}
-
-	jobs, err := r.GetDeadJobs(10)
-	if err != nil {
-		t.Fatalf("GetDeadJobs: %v", err)
-	}
-	if len(jobs) < 1 {
-		t.Fatalf("len(GetDeadJobs) = %d, want at least 1", len(jobs))
-	}
-	if jobs[0].JID != j.JID {
-		t.Errorf("JID = %q, want %q", jobs[0].JID, j.JID)
-	}
-}
-
 func TestRedisBroker_GetStats(t *testing.T) {
 	s := miniredis.RunT(t)
 	r, err := NewRedisBroker(fmt.Sprintf("redis://%s/0", s.Addr()), time.Second)

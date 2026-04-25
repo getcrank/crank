@@ -189,27 +189,6 @@ func (r *RedisBroker) RecordFailure(job *payload.Job) error {
 	return r.recordStatEntry("stat:failed", job)
 }
 
-// nackScript atomically removes from processing and re-enqueues.
-// KEYS[1]=processing key, KEYS[2]=queue key  ARGV[1]=member
-var nackScript = redis.NewScript(`
-redis.call('ZREM', KEYS[1], ARGV[1])
-redis.call('LPUSH', KEYS[2], ARGV[1])
-return 1
-`)
-
-// Nack removes a job from the processing set and re-enqueues it atomically.
-func (r *RedisBroker) Nack(job *payload.Job) error {
-	data, err := rawOrSerialize(job)
-	if err != nil {
-		return fmt.Errorf("failed to serialize job for nack: %w", err)
-	}
-	queueKey := fmt.Sprintf("queue:%s", job.Queue)
-	return nackScript.Run(r.ctx, r.client,
-		[]string{redisProcessingKey, queueKey},
-		data,
-	).Err()
-}
-
 // reapScript atomically finds and removes expired members from the processing set.
 // KEYS[1]=processing key  ARGV[1]=cutoff score  ARGV[2]=limit
 // Returns removed members.
@@ -311,27 +290,6 @@ func (r *RedisBroker) AddToDead(job *payload.Job) error {
 	}).Err()
 }
 
-func (r *RedisBroker) GetDeadJobs(limit int64) ([]*payload.Job, error) {
-	if limit <= 0 {
-		limit = 1
-	}
-	if limit > 10000 {
-		limit = 10000
-	}
-	result, err := r.client.ZRevRange(r.ctx, "dead", 0, limit-1).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get dead jobs: %w", err)
-	}
-	jobs := make([]*payload.Job, 0, len(result))
-	for _, data := range result {
-		job, err := payload.FromJSON([]byte(data))
-		if err != nil {
-			continue
-		}
-		jobs = append(jobs, job)
-	}
-	return jobs, nil
-}
 
 func (r *RedisBroker) GetQueueSize(queue string) (int64, error) {
 	return r.client.LLen(r.ctx, "queue:"+queue).Result()

@@ -28,13 +28,11 @@ func (m *mockBroker) Dequeue([]string, time.Duration) (*payload.Job, string, err
 	return nil, "", nil
 }
 func (m *mockBroker) Ack(*payload.Job) error                                 { return nil }
-func (m *mockBroker) Nack(*payload.Job) error                                { return nil }
 func (m *mockBroker) ReapOrphanedJobs(time.Duration) ([]*payload.Job, error) { return nil, nil }
 func (m *mockBroker) AddToRetry(*payload.Job, time.Time) error               { return nil }
 func (m *mockBroker) GetRetryJobs(int64) ([]*payload.Job, error)             { return nil, nil }
 func (m *mockBroker) RemoveFromRetry(*payload.Job) error                     { return nil }
 func (m *mockBroker) AddToDead(*payload.Job) error                           { return nil }
-func (m *mockBroker) GetDeadJobs(int64) ([]*payload.Job, error)              { return nil, nil }
 func (m *mockBroker) GetQueueSize(string) (int64, error)                     { return 0, nil }
 func (m *mockBroker) DeleteKey(string) error                                 { return nil }
 func (m *mockBroker) RecordSuccess(*payload.Job) error                       { return nil }
