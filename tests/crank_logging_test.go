@@ -80,7 +80,7 @@ func TestLogging_FullJobLifecycle(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	_, err = client.Enqueue("LifecycleWorker", "default", "test")
+	_, err = client.Enqueue(context.Background(),"LifecycleWorker", "default", "test")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestLogging_FailedJobLifecycle(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	_, err = client.EnqueueWithOptions("FailLogger", "default",
+	_, err = client.EnqueueWithOptions(context.Background(),"FailLogger", "default",
 		&crank.JobOptions{Retry: intPtr(0)}, "test")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -162,7 +162,7 @@ func TestLogging_EnqueueIncludesClassAndQueue(t *testing.T) {
 		t.Fatalf("NewTestEngine: %v", err)
 	}
 
-	jid, err := client.Enqueue("EmailWorker", "critical", "user@test.com")
+	jid, err := client.Enqueue(context.Background(),"EmailWorker", "critical", "user@test.com")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestLogging_NoLogWithoutLogger(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	_, err = client.Enqueue("QuietWorker", "default")
+	_, err = client.Enqueue(context.Background(),"QuietWorker", "default")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}

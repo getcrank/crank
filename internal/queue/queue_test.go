@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -23,7 +24,7 @@ func (m *mockBroker) GetStats() (map[string]interface{}, error) {
 	return m.stats, nil
 }
 
-func (m *mockBroker) Enqueue(string, *payload.Job) error { return nil }
+func (m *mockBroker) Enqueue(context.Context, string, *payload.Job) error { return nil }
 func (m *mockBroker) Dequeue([]string, time.Duration) (*payload.Job, string, error) {
 	return nil, "", nil
 }

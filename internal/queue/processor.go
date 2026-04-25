@@ -200,7 +200,7 @@ func (p *Processor) fetcher() {
 			case p.jobCh <- jobMsg{job: job, queue: q}:
 			case <-p.ctx.Done():
 				job.State = payload.JobStatePending
-				if err := p.broker.Enqueue(q, job); err != nil {
+				if err := p.broker.Enqueue(context.Background(), q, job); err != nil {
 					p.log.Error("failed to re-enqueue job on shutdown, reaper will recover", "jid", job.JID, "queue", q, "err", err)
 				} else {
 					if ackErr := p.broker.Ack(job); ackErr != nil {
@@ -324,7 +324,7 @@ func (p *Processor) retryLoop() {
 					continue
 				}
 				j.State = payload.JobStatePending
-				if err := p.broker.Enqueue(j.Queue, j); err != nil {
+				if err := p.broker.Enqueue(p.ctx, j.Queue, j); err != nil {
 					p.log.Warn("re-enqueue retry job failed, re-adding to retry", "jid", j.JID, "err", err)
 					if addErr := p.broker.AddToRetry(j, time.Now().Add(time.Minute)); addErr != nil {
 						p.log.Error("failed to re-add job to retry set, job may be lost", "jid", j.JID, "err", addErr)
@@ -360,7 +360,7 @@ func (p *Processor) reaperLoop() {
 					continue
 				}
 				p.log.Info("reaping orphaned job", "jid", j.JID, "class", j.Class, "queue", j.Queue)
-				if err := p.broker.Enqueue(j.Queue, j); err != nil {
+				if err := p.broker.Enqueue(p.ctx, j.Queue, j); err != nil {
 					p.log.Error("failed to re-enqueue orphaned job", "jid", j.JID, "err", err)
 				}
 			}

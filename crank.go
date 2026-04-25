@@ -105,8 +105,7 @@ func brokerURLAndOptsFromConfig(cfg *config.Config) (string, broker.ConnOptions)
 			TLSInsecureSkipVerify: cfg.Redis.TLSInsecureSkipVerify,
 		}
 	default:
-		// pgsql and others — URL comes from broker_url in config
-		return cfg.BrokerURL, broker.ConnOptions{}
+		return "", broker.ConnOptions{}
 	}
 }
 

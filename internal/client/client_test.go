@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -53,7 +54,7 @@ func TestEnqueue_LogsJobEnqueued(t *testing.T) {
 	spy := &spyLogger{}
 	c := New(broker.NewInMemoryBroker(), spy)
 
-	jid, err := c.Enqueue("EmailWorker", "default", "user@example.com")
+	jid, err := c.Enqueue(context.Background(),"EmailWorker", "default", "user@example.com")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestEnqueueWithOptions_LogsJobEnqueued(t *testing.T) {
 	c := New(broker.NewInMemoryBroker(), spy)
 
 	retry := 3
-	jid, err := c.EnqueueWithOptions("ReportWorker", "critical", &payload.JobOptions{Retry: &retry}, "arg1")
+	jid, err := c.EnqueueWithOptions(context.Background(),"ReportWorker", "critical", &payload.JobOptions{Retry: &retry}, "arg1")
 	if err != nil {
 		t.Fatalf("EnqueueWithOptions: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestEnqueueWithOptions_LogsJobEnqueued(t *testing.T) {
 func TestEnqueue_NoLogWhenLoggerNil(t *testing.T) {
 	c := New(broker.NewInMemoryBroker(), nil)
 
-	_, err := c.Enqueue("Worker", "default")
+	_, err := c.Enqueue(context.Background(),"Worker", "default")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestEnqueue_NoLogOnError(t *testing.T) {
 	_ = mb.Close() // closed broker makes Enqueue return an error
 	c := New(mb, spy)
 
-	_, err := c.Enqueue("Worker", "default")
+	_, err := c.Enqueue(context.Background(),"Worker", "default")
 	if err == nil {
 		t.Fatal("expected enqueue error")
 	}

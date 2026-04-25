@@ -107,20 +107,6 @@ redis:
 	}
 }
 
-func TestLoad_RedisWithBrokerURLFallback_Succeeds(t *testing.T) {
-	path := writeTestConfig(t, `
-broker: redis
-broker_url: redis://fallback:6379/0
-`)
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Redis.URL != "redis://fallback:6379/0" {
-		t.Errorf("Redis.URL = %q, want redis://fallback:6379/0", cfg.Redis.URL)
-	}
-}
-
 func TestLoad_RedisWithEnvFallback_Succeeds(t *testing.T) {
 	t.Setenv("REDIS_URL", "redis://envhost:6379/1")
 	path := writeTestConfig(t, `

@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func TestRedisBroker_DequeueAndAck(t *testing.T) {
 	t.Cleanup(func() { _ = r.Close() })
 
 	job := payload.NewJob("W", "default", "arg1")
-	if err := r.Enqueue("default", job); err != nil {
+	if err := r.Enqueue(context.Background(), "default", job); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 
@@ -62,7 +63,7 @@ func TestRedisBroker_ReapOrphanedJobs(t *testing.T) {
 	t.Cleanup(func() { _ = r.Close() })
 
 	job := payload.NewJob("W", "default", "arg1")
-	r.Enqueue("default", job)
+	r.Enqueue(context.Background(), "default", job)
 	r.Dequeue([]string{"default"}, time.Second)
 
 	// With a zero lease, cutoff=now which is before the lease expiry — nothing reaped

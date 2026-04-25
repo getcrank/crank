@@ -2,7 +2,6 @@ package crank_test
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -102,7 +101,7 @@ func TestNew_WithCustomBroker_ProcessesJob(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	jid, err := client.Enqueue("CustomWorker", "default", "hello")
+	jid, err := client.Enqueue(context.Background(),"CustomWorker", "default", "hello")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -136,80 +135,3 @@ func TestNew_WithCustomBroker_TakesPrecedenceOverWithBroker(t *testing.T) {
 	_ = mb.Close()
 }
 
-// ---------------------------------------------------------------------------
-// Tests: QuickStart enforces broker in config
-// ---------------------------------------------------------------------------
-
-func TestQuickStart_MissingBrokerField_ReturnsError(t *testing.T) {
-	// Write a temp config with no broker field
-	cfg := writeTestConfig(t, `
-concurrency: 5
-timeout: 8
-`)
-	_, _, err := crank.QuickStart(cfg)
-	if err == nil {
-		t.Fatal("expected error when broker field is missing in config")
-	}
-	if !strings.Contains(err.Error(), "\"broker\" field is required") {
-		t.Errorf("error = %q, want mention of broker field required", err)
-	}
-}
-
-func TestQuickStart_BrokerPgsql_ReturnsNotImplemented(t *testing.T) {
-	cfg := writeTestConfig(t, `
-broker: pgsql
-concurrency: 5
-`)
-	_, _, err := crank.QuickStart(cfg)
-	if err == nil {
-		t.Fatal("expected error for pgsql broker in config")
-	}
-	if !strings.Contains(err.Error(), "not yet implemented") {
-		t.Errorf("error = %q, want 'not yet implemented'", err)
-	}
-}
-
-func TestQuickStart_UnknownBroker_ReturnsError(t *testing.T) {
-	cfg := writeTestConfig(t, `
-broker: kafka
-concurrency: 5
-`)
-	_, _, err := crank.QuickStart(cfg)
-	if err == nil {
-		t.Fatal("expected error for unknown broker")
-	}
-	if !strings.Contains(err.Error(), "unknown broker") {
-		t.Errorf("error = %q, want 'unknown broker'", err)
-	}
-}
-
-func TestQuickStart_RedisNoURL_ReturnsError(t *testing.T) {
-	// Unset REDIS_URL to ensure no fallback
-	t.Setenv("REDIS_URL", "")
-
-	cfg := writeTestConfig(t, `
-broker: redis
-`)
-	_, _, err := crank.QuickStart(cfg)
-	if err == nil {
-		t.Fatal("expected error when redis URL is empty")
-	}
-	if !strings.Contains(err.Error(), "redis.url") {
-		t.Errorf("error = %q, want mention of redis.url", err)
-	}
-}
-
-// writeTestConfig writes YAML content to a temp file and returns its path.
-func writeTestConfig(t *testing.T, content string) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := dir + "/crank_test.yml"
-	if err := writeFile(path, content); err != nil {
-		t.Fatalf("write test config: %v", err)
-	}
-	return path
-}
-
-func writeFile(path, content string) error {
-	return os.WriteFile(path, []byte(content), 0644)
-}

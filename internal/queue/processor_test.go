@@ -36,7 +36,7 @@ type spyBroker struct {
 	retryJobs                 []*payload.Job
 }
 
-func (b *spyBroker) Enqueue(q string, j *payload.Job) error {
+func (b *spyBroker) Enqueue(_ context.Context, q string, j *payload.Job) error {
 	b.enqNames = append(b.enqNames, q)
 	b.enq = append(b.enq, j)
 	return b.enqueueErr

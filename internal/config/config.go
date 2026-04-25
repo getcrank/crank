@@ -26,12 +26,10 @@ type Logger interface {
 // Broker selection is via Broker (e.g. "redis", "nats", "pgsql"); the matching
 // section (Redis, NATS, etc.) must be non-empty and provide URL and options.
 type Config struct {
-	Broker            string        `yaml:"broker"`     // "redis", "nats", "pgsql". Required — no default.
-	BrokerURL         string        `yaml:"broker_url"` // optional fallback URL when backend's url is empty
+	Broker            string        `yaml:"broker"` // "redis", "nats", "pgsql". Required — no default.
 	Concurrency       int           `yaml:"concurrency"`
 	Queues            []QueueConfig `yaml:"queues"`
 	Timeout           int           `yaml:"timeout"`
-	Verbose           bool          `yaml:"verbose"`
 	Redis             RedisConfig   `yaml:"redis"` // required when broker is "redis"
 	NATS              NATSConfig    `yaml:"nats"`  // required when broker is "nats"
 	Logger            Logger        `yaml:"-"`
@@ -52,11 +50,10 @@ func (c *NATSConfig) GetTimeout() time.Duration {
 	return time.Duration(c.Timeout) * time.Second
 }
 
-// QueueConfig: YAML accepts [name, weight] or {name, weight, priority}. Priority reserved.
+// QueueConfig: YAML accepts [name, weight] or {name, weight}.
 type QueueConfig struct {
-	Name     string `yaml:"name"`
-	Weight   int    `yaml:"weight"`
-	Priority int    `yaml:"priority"`
+	Name   string `yaml:"name"`
+	Weight int    `yaml:"weight"`
 }
 
 func (qc *QueueConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -89,11 +86,6 @@ func (qc *QueueConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		qc.Weight = weight
 	} else if weight, ok := m["weight"].(float64); ok {
 		qc.Weight = int(weight)
-	}
-	if priority, ok := m["priority"].(int); ok {
-		qc.Priority = priority
-	} else if priority, ok := m["priority"].(float64); ok {
-		qc.Priority = int(priority)
 	}
 	if qc.Weight == 0 {
 		qc.Weight = 1
@@ -147,26 +139,20 @@ func Load(path string) (*Config, error) {
 	switch cfg.Broker {
 	case "redis":
 		if cfg.Redis.URL == "" {
-			cfg.Redis.URL = cfg.BrokerURL
-		}
-		if cfg.Redis.URL == "" {
 			cfg.Redis.URL = os.Getenv("REDIS_URL")
 		}
 		if cfg.Redis.URL == "" {
-			return nil, fmt.Errorf("config: broker is %q but redis.url (or broker_url / REDIS_URL) is empty", cfg.Broker)
+			return nil, fmt.Errorf("config: broker is %q but redis.url (or REDIS_URL env) is empty", cfg.Broker)
 		}
 		if cfg.Redis.NetworkTimeout == 0 {
 			cfg.Redis.NetworkTimeout = 5
 		}
 	case "nats":
 		if cfg.NATS.URL == "" {
-			cfg.NATS.URL = cfg.BrokerURL
-		}
-		if cfg.NATS.URL == "" {
 			cfg.NATS.URL = os.Getenv("NATS_URL")
 		}
 		if cfg.NATS.URL == "" {
-			return nil, fmt.Errorf("config: broker is %q but nats.url (or broker_url / NATS_URL) is empty", cfg.Broker)
+			return nil, fmt.Errorf("config: broker is %q but nats.url (or NATS_URL env) is empty", cfg.Broker)
 		}
 		if cfg.NATS.Timeout == 0 {
 			cfg.NATS.Timeout = 5

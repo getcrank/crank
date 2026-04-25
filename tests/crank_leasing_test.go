@@ -31,7 +31,7 @@ func TestLeasing_SuccessfulJobIsAcked(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	client.Enqueue("AckWorker", "default", "test")
+	client.Enqueue(context.Background(),"AckWorker", "default", "test")
 
 	select {
 	case <-done:
@@ -74,7 +74,7 @@ func TestLeasing_FailedJobWithRetryIsAcked(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	client.EnqueueWithOptions("RetryAckWorker", "default",
+	client.EnqueueWithOptions(context.Background(),"RetryAckWorker", "default",
 		&crank.JobOptions{Retry: intPtr(1)}, "test")
 
 	select {
@@ -122,7 +122,7 @@ func TestLeasing_DeadJobIsAcked(t *testing.T) {
 	}
 	defer engine.Stop()
 
-	client.EnqueueWithOptions("DeadAckWorker", "default",
+	client.EnqueueWithOptions(context.Background(),"DeadAckWorker", "default",
 		&crank.JobOptions{Retry: intPtr(0)}, "test")
 
 	select {

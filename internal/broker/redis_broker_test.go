@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -29,7 +30,7 @@ func TestRedisBroker_EnqueueDequeue(t *testing.T) {
 	t.Cleanup(func() { _ = r.Close() })
 
 	j := payload.NewJob("W", "default", 1, "two")
-	if err := r.Enqueue("default", j); err != nil {
+	if err := r.Enqueue(context.Background(), "default", j); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 
@@ -95,7 +96,7 @@ func TestRedisBroker_GetStats(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = r.Close() })
 
-	if err := r.Enqueue("default", payload.NewJob("W", "default", 1)); err != nil {
+	if err := r.Enqueue(context.Background(), "default", payload.NewJob("W", "default", 1)); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 	successJob := payload.NewJob("W", "default", 2)

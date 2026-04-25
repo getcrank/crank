@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ func TestInMemoryBroker_DequeueMovesToProcessing(t *testing.T) {
 	defer b.Close()
 
 	job := payload.NewJob("W", "default", "arg1")
-	if err := b.Enqueue("default", job); err != nil {
+	if err := b.Enqueue(context.Background(), "default", job); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 
@@ -47,7 +48,7 @@ func TestInMemoryBroker_AckRemovesFromProcessing(t *testing.T) {
 	defer b.Close()
 
 	job := payload.NewJob("W", "default")
-	b.Enqueue("default", job)
+	b.Enqueue(context.Background(), "default", job)
 	got, _, _ := b.Dequeue([]string{"default"}, time.Second)
 
 	if err := b.Ack(got); err != nil {
@@ -65,7 +66,7 @@ func TestInMemoryBroker_AckIsIdempotent(t *testing.T) {
 	defer b.Close()
 
 	job := payload.NewJob("W", "default")
-	b.Enqueue("default", job)
+	b.Enqueue(context.Background(), "default", job)
 	got, _, _ := b.Dequeue([]string{"default"}, time.Second)
 
 	if err := b.Ack(got); err != nil {
@@ -81,7 +82,7 @@ func TestInMemoryBroker_ReapOrphanedJobs(t *testing.T) {
 	defer b.Close()
 
 	job := payload.NewJob("W", "default")
-	b.Enqueue("default", job)
+	b.Enqueue(context.Background(), "default", job)
 	b.Dequeue([]string{"default"}, time.Second)
 
 	// Lease is still valid (5 min in the future), nothing should be reaped
@@ -127,7 +128,7 @@ func TestInMemoryBroker_StatsIncludesProcessing(t *testing.T) {
 	defer b.Close()
 
 	job := payload.NewJob("W", "default")
-	b.Enqueue("default", job)
+	b.Enqueue(context.Background(), "default", job)
 	b.Dequeue([]string{"default"}, time.Second)
 
 	stats, err := b.GetStats()

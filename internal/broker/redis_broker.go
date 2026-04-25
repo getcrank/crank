@@ -82,14 +82,14 @@ func (r *RedisBroker) Close() error {
 	return r.client.Close()
 }
 
-func (r *RedisBroker) Enqueue(queue string, job *payload.Job) error {
+func (r *RedisBroker) Enqueue(ctx context.Context, queue string, job *payload.Job) error {
 	data, err := job.ToJSON()
 	if err != nil {
 		return fmt.Errorf("failed to serialize job: %w", err)
 	}
 
 	queueKey := fmt.Sprintf("queue:%s", queue)
-	if err := r.client.LPush(r.ctx, queueKey, data).Err(); err != nil {
+	if err := r.client.LPush(ctx, queueKey, data).Err(); err != nil {
 		return fmt.Errorf("failed to enqueue job: %w", err)
 	}
 

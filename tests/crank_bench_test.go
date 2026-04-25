@@ -24,7 +24,7 @@ func BenchmarkEnqueue(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := client.Enqueue("BenchWorker", "default", "arg1", i)
+		_, err := client.Enqueue(context.Background(),"BenchWorker", "default", "arg1", i)
 		if err != nil {
 			b.Fatalf("Enqueue: %v", err)
 		}
@@ -45,7 +45,7 @@ func BenchmarkEnqueueParallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			client.Enqueue("BenchWorker", "default", "arg1", i)
+			client.Enqueue(context.Background(),"BenchWorker", "default", "arg1", i)
 			i++
 		}
 	})
@@ -58,7 +58,7 @@ func BenchmarkInMemoryBrokerEnqueue(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		br.Enqueue("default", payload.NewJob("BenchWorker", "default", "arg1"))
+		br.Enqueue(context.Background(), "default", payload.NewJob("BenchWorker", "default", "arg1"))
 	}
 }
 
@@ -69,7 +69,7 @@ func BenchmarkInMemoryBrokerDequeue(b *testing.B) {
 
 	// Pre-fill
 	for i := 0; i < b.N; i++ {
-		br.Enqueue("default", payload.NewJob("W", "default", i))
+		br.Enqueue(context.Background(), "default", payload.NewJob("W", "default", i))
 	}
 
 	b.ResetTimer()
@@ -148,7 +148,7 @@ func BenchmarkFullJobProcessing(b *testing.B) {
 	b.ResetTimer()
 	wg.Add(b.N)
 	for i := 0; i < b.N; i++ {
-		client.Enqueue("BenchWorker", "default", i)
+		client.Enqueue(context.Background(),"BenchWorker", "default", i)
 	}
 	wg.Wait()
 }

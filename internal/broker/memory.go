@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -45,10 +46,12 @@ func NewInMemoryBroker() *InMemoryBroker {
 }
 
 // Enqueue appends the job to the named queue.
-func (m *InMemoryBroker) Enqueue(queue string, job *payload.Job) error {
+func (m *InMemoryBroker) Enqueue(ctx context.Context, queue string, job *payload.Job) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	select {
+	case <-ctx.Done():
+		return ctx.Err()
 	case <-m.done:
 		return fmt.Errorf("broker closed")
 	default:

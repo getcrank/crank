@@ -1,6 +1,5 @@
 # broker: redis | nats | pgsql (required — no default). Matching section (redis, nats, etc.) must be set.
 broker: redis
-# broker_url: optional fallback when redis.url / nats.url is empty
 
 concurrency: 10
 queues:

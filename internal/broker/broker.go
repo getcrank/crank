@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"time"
 
 	"github.com/ogwurujohnson/crank/internal/payload"
@@ -16,7 +17,7 @@ import (
 // scheduling retry/dead). Jobs whose lease expires without an Ack
 // are reclaimed by ReapOrphanedJobs.
 type Broker interface {
-	Enqueue(queue string, job *payload.Job) error
+	Enqueue(ctx context.Context, queue string, job *payload.Job) error
 	Dequeue(queues []string, timeout time.Duration) (*payload.Job, string, error)
 	Ack(job *payload.Job) error
 	ReapOrphanedJobs(lease time.Duration) ([]*payload.Job, error)
