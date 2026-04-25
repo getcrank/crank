@@ -56,7 +56,7 @@ func (b *spyBroker) RemoveFromRetry(j *payload.Job) error {
 	b.removed = append(b.removed, j)
 	return nil
 }
-func (b *spyBroker) AddToDead(j *payload.Job) error { b.dead = append(b.dead, j); return nil }
+func (b *spyBroker) AddToDead(j *payload.Job) error            { b.dead = append(b.dead, j); return nil }
 func (b *spyBroker) GetQueueSize(string) (int64, error)        { return 0, nil }
 func (b *spyBroker) DeleteKey(string) error                    { return nil }
 func (b *spyBroker) RecordSuccess(*payload.Job) error          { return nil }

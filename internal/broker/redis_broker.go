@@ -290,7 +290,6 @@ func (r *RedisBroker) AddToDead(job *payload.Job) error {
 	}).Err()
 }
 
-
 func (r *RedisBroker) GetQueueSize(queue string) (int64, error) {
 	return r.client.LLen(r.ctx, "queue:"+queue).Result()
 }
