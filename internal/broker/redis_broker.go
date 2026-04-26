@@ -5,12 +5,25 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/ogwurujohnson/crank/internal/payload"
 )
+
+// redactURL masks credentials in a Redis URL to prevent leaking secrets in error messages.
+func redactURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "[unparseable URL]"
+	}
+	if u.User != nil {
+		u.User = url.UserPassword(u.User.Username(), "[REDACTED]")
+	}
+	return u.String()
+}
 
 type RedisBrokerConfig struct {
 	URL                   string
@@ -48,7 +61,9 @@ func NewRedisBrokerWithConfig(cfg RedisBrokerConfig) (*RedisBroker, error) {
 
 	opt, err := redis.ParseURL(trimmedURL)
 	if err != nil {
-		return nil, fmt.Errorf("broker not available: invalid Redis URL: %w", err)
+		// redis.ParseURL may embed the full URL (including password) in its error.
+		// Return a generic message with the redacted URL instead.
+		return nil, fmt.Errorf("broker not available: invalid Redis URL %s: %v", redactURL(trimmedURL), err)
 	}
 
 	opt.DialTimeout = cfg.Timeout
@@ -71,7 +86,7 @@ func NewRedisBrokerWithConfig(cfg RedisBrokerConfig) (*RedisBroker, error) {
 	if err := client.Ping(ctx).Err(); err != nil {
 		cancel()
 		_ = client.Close()
-		return nil, fmt.Errorf("broker not available: Redis unreachable at %q: %w", opt.Addr, err)
+		return nil, fmt.Errorf("broker not available: Redis unreachable: %w", err)
 	}
 
 	return &RedisBroker{
