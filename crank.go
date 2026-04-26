@@ -209,7 +209,9 @@ const (
 type Redactor = payload.Redactor
 
 var (
-	NoopRedactor    = payload.NoopRedactor{}
+	// NoopRedactor is UNSAFE for production — it exposes all job arguments in logs.
+	// Deprecated: Use MaskingRedactor (default) or NewFieldMaskingRedactor.
+	NoopRedactor    = payload.DebugRedactor{}
 	MaskingRedactor = payload.MaskingRedactor{}
 )
 
