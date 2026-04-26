@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/ogwurujohnson/crank/internal/config"
 	"github.com/ogwurujohnson/crank/internal/payload"
 )
@@ -206,7 +206,7 @@ func (r *RedisBroker) Ack(job *payload.Job) error {
 
 // recordStatEntry adds a job ID to a stat sorted set and trims to the last 100,000 entries.
 func (r *RedisBroker) recordStatEntry(key string, job *payload.Job) error {
-	_ = r.client.ZAdd(r.ctx, key, &redis.Z{
+	_ = r.client.ZAdd(r.ctx, key, redis.Z{
 		Score:  float64(time.Now().Unix()),
 		Member: job.JID,
 	}).Err()
@@ -271,7 +271,7 @@ func (r *RedisBroker) AddToRetry(job *payload.Job, retryAt time.Time) error {
 		return fmt.Errorf("failed to serialize job: %w", err)
 	}
 
-	return r.client.ZAdd(r.ctx, "retry", &redis.Z{
+	return r.client.ZAdd(r.ctx, "retry", redis.Z{
 		Score:  float64(retryAt.Unix()),
 		Member: data,
 	}).Err()
@@ -319,7 +319,7 @@ func (r *RedisBroker) AddToDead(job *payload.Job) error {
 		return fmt.Errorf("failed to serialize job: %w", err)
 	}
 
-	return r.client.ZAdd(r.ctx, "dead", &redis.Z{
+	return r.client.ZAdd(r.ctx, "dead", redis.Z{
 		Score:  float64(time.Now().Unix()),
 		Member: data,
 	}).Err()
