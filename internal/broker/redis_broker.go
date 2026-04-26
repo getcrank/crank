@@ -39,7 +39,11 @@ func NewRedisBrokerWithConfig(cfg RedisBrokerConfig) (*RedisBroker, error) {
 	}
 
 	if cfg.UseTLS && !strings.HasPrefix(trimmedURL, "rediss://") {
-		trimmedURL = strings.Replace(trimmedURL, "redis://", "rediss://", 1)
+		if strings.HasPrefix(trimmedURL, "redis://") {
+			trimmedURL = "rediss://" + trimmedURL[len("redis://"):]
+		} else {
+			return nil, fmt.Errorf("broker: UseTLS is true but URL scheme is not redis:// or rediss://; provide a redis:// or rediss:// URL")
+		}
 	}
 
 	opt, err := redis.ParseURL(trimmedURL)
