@@ -6,6 +6,7 @@ import (
 
 	"github.com/ogwurujohnson/crank/internal/broker"
 	"github.com/ogwurujohnson/crank/internal/config"
+	"github.com/ogwurujohnson/crank/internal/payload"
 	"github.com/ogwurujohnson/crank/internal/queue"
 )
 
@@ -42,6 +43,8 @@ type Engine struct {
 	mu        sync.Mutex
 	started   bool
 	stopOnce  sync.Once
+	redactor  payload.Redactor
+	validator payload.Validator
 }
 
 // newEngine creates an Engine from internal config and broker. Used by New and QuickStart.
@@ -116,6 +119,32 @@ func (e *Engine) Stop() {
 		e.processor.Stop()
 		_ = e.broker.Close()
 	})
+}
+
+// SetRedactor sets the engine-scoped redactor used by logging middleware.
+// This overrides the process-global redactor for this engine only.
+// Must be called before Start.
+func (e *Engine) SetRedactor(r payload.Redactor) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.started {
+		return fmt.Errorf("SetRedactor must be called before Start")
+	}
+	e.redactor = r
+	return e.processor.SetRedactor(r)
+}
+
+// SetValidator sets the engine-scoped validator used during job execution.
+// This overrides the process-global validator for this engine only.
+// Must be called before Start.
+func (e *Engine) SetValidator(v payload.Validator) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.started {
+		return fmt.Errorf("SetValidator must be called before Start")
+	}
+	e.validator = v
+	return e.processor.SetValidator(v)
 }
 
 // SetMetricsHandler sets the metrics handler for the engine. Must be called before Start.

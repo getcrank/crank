@@ -35,13 +35,20 @@ func (c *Chain) Wrap(final Handler) Handler {
 	return handler
 }
 
-func LoggingMiddleware(logger Logger) Middleware {
+// LoggingMiddleware logs failed jobs with redacted arguments.
+// If redactor is nil, falls back to the process-global default redactor.
+func LoggingMiddleware(logger Logger, redactor ...payload.Redactor) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx context.Context, job *payload.Job) error {
 			err := next(ctx, job)
 			if err != nil {
-				redactor := payload.GetDefaultRedactor()
-				safeArgs := redactor.RedactArgs(job.Args)
+				var r payload.Redactor
+				if len(redactor) > 0 && redactor[0] != nil {
+					r = redactor[0]
+				} else {
+					r = payload.GetDefaultRedactor()
+				}
+				safeArgs := r.RedactArgs(job.Args)
 				logger.Error("job failed", "jid", job.JID, "args", safeArgs, "err", err)
 			}
 			return err

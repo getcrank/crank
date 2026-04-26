@@ -218,8 +218,13 @@ var (
 	MaskingRedactor = payload.MaskingRedactor{}
 )
 
+// SetRedactor sets the process-global redactor used by all engines that do not
+// have an engine-scoped redactor set via Engine.SetRedactor.
+// Deprecated: Use Engine.SetRedactor to scope the redactor to a single engine.
 func SetRedactor(r payload.Redactor) { payload.SetDefaultRedactor(r) }
-func GetRedactor() payload.Redactor  { return payload.GetDefaultRedactor() }
+
+// GetRedactor returns the process-global redactor.
+func GetRedactor() payload.Redactor { return payload.GetDefaultRedactor() }
 
 func NewFieldMaskingRedactor(keys []string) *payload.FieldMaskingRedactor {
 	return &payload.FieldMaskingRedactor{Keys: keys}
@@ -240,8 +245,13 @@ var (
 	ValidateQueueName = payload.ValidateQueueName
 )
 
+// SetValidator sets the process-global validator used by all engines that do not
+// have an engine-scoped validator set via Engine.SetValidator.
+// Deprecated: Use Engine.SetValidator to scope the validator to a single engine.
 func SetValidator(v payload.Validator) { payload.SetDefaultValidator(v) }
-func GetValidator() payload.Validator  { return payload.GetDefaultValidator() }
+
+// GetValidator returns the process-global validator.
+func GetValidator() payload.Validator { return payload.GetDefaultValidator() }
 
 func SafeClassPattern() payload.Validator {
 	return payload.ClassPattern(regexp.MustCompile(`^[A-Za-z0-9_]+$`))

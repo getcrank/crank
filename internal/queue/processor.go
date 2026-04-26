@@ -18,23 +18,25 @@ type jobMsg struct {
 }
 
 type Processor struct {
-	cfg      *config.Config
-	broker   broker.Broker
-	registry WorkerRegistry
-	log      Logger
-	queues   []string
-	queueSet map[string]bool
-	jobCh    chan jobMsg
-	wg       sync.WaitGroup
-	ctx      context.Context
-	cancel   context.CancelFunc
-	chain    *Chain
-	handler  Handler
-	breaker  *CircuitBreaker
-	metrics  MetricsHandler
-	events   chan JobEvent
-	started  bool
-	mu       sync.Mutex
+	cfg       *config.Config
+	broker    broker.Broker
+	registry  WorkerRegistry
+	log       Logger
+	queues    []string
+	queueSet  map[string]bool
+	jobCh     chan jobMsg
+	wg        sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	chain     *Chain
+	handler   Handler
+	breaker   *CircuitBreaker
+	metrics   MetricsHandler
+	events    chan JobEvent
+	started   bool
+	mu        sync.Mutex
+	redactor  payload.Redactor
+	validator payload.Validator
 }
 
 func NewProcessor(cfg *config.Config, b broker.Broker, registry WorkerRegistry, chain *Chain) (*Processor, error) {
@@ -90,7 +92,12 @@ func NewProcessor(cfg *config.Config, b broker.Broker, registry WorkerRegistry, 
 
 // execute is the core logic wrapped by middleware
 func (p *Processor) execute(ctx context.Context, job *payload.Job) error {
-	if v := payload.GetDefaultValidator(); v != nil {
+	// Use engine-scoped validator if set, otherwise fall back to global.
+	v := p.validator
+	if v == nil {
+		v = payload.GetDefaultValidator()
+	}
+	if v != nil {
 		if err := v.Validate(job); err != nil {
 			return fmt.Errorf("validation failed: %w", err)
 		}
@@ -413,6 +420,28 @@ func (p *Processor) emitEvent(ev JobEvent) {
 		// Drop event if buffer is full to avoid blocking workers
 		p.log.Debug("metrics event dropped", "type", ev.Type, "jid", ev.Job.JID)
 	}
+}
+
+// SetRedactor sets the engine-scoped redactor. Must be called before Start.
+func (p *Processor) SetRedactor(r payload.Redactor) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.started {
+		return fmt.Errorf("SetRedactor must be called before Start")
+	}
+	p.redactor = r
+	return nil
+}
+
+// SetValidator sets the engine-scoped validator. Must be called before Start.
+func (p *Processor) SetValidator(v payload.Validator) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.started {
+		return fmt.Errorf("SetValidator must be called before Start")
+	}
+	p.validator = v
+	return nil
 }
 
 func (p *Processor) SetMetricsHandler(h MetricsHandler) error {
