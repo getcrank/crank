@@ -88,6 +88,7 @@ func newBroker(brokerURL string, o options) (broker.Broker, error) {
 		Timeout:               o.redisTimeout,
 		UseTLS:                o.useTLS,
 		TLSInsecureSkipVerify: o.tlsInsecureSkip,
+		Logger:                o.logger,
 	})
 }
 
@@ -97,12 +98,14 @@ func brokerURLAndOptsFromConfig(cfg *config.Config) (string, broker.ConnOptions)
 	case "nats":
 		return cfg.NATS.URL, broker.ConnOptions{
 			Timeout: cfg.NATS.GetTimeout(),
+			Logger:  cfg.Logger,
 		}
 	case "redis":
 		return cfg.Redis.URL, broker.ConnOptions{
 			Timeout:               cfg.Redis.GetNetworkTimeout(),
 			UseTLS:                cfg.Redis.UseTLS,
 			TLSInsecureSkipVerify: cfg.Redis.TLSInsecureSkipVerify,
+			Logger:                cfg.Logger,
 		}
 	default:
 		return "", broker.ConnOptions{}
@@ -209,12 +212,19 @@ const (
 type Redactor = payload.Redactor
 
 var (
-	NoopRedactor    = payload.NoopRedactor{}
+	// NoopRedactor is UNSAFE for production — it exposes all job arguments in logs.
+	// Deprecated: Use MaskingRedactor (default) or NewFieldMaskingRedactor.
+	NoopRedactor    = payload.DebugRedactor{}
 	MaskingRedactor = payload.MaskingRedactor{}
 )
 
+// SetRedactor sets the process-global redactor used by all engines that do not
+// have an engine-scoped redactor set via Engine.SetRedactor.
+// Deprecated: Use Engine.SetRedactor to scope the redactor to a single engine.
 func SetRedactor(r payload.Redactor) { payload.SetDefaultRedactor(r) }
-func GetRedactor() payload.Redactor  { return payload.GetDefaultRedactor() }
+
+// GetRedactor returns the process-global redactor.
+func GetRedactor() payload.Redactor { return payload.GetDefaultRedactor() }
 
 func NewFieldMaskingRedactor(keys []string) *payload.FieldMaskingRedactor {
 	return &payload.FieldMaskingRedactor{Keys: keys}
@@ -227,14 +237,21 @@ type Validator = payload.Validator
 type ChainValidator = payload.ChainValidator
 
 var (
-	MaxArgsCount   = payload.MaxArgsCount
-	ClassAllowlist = payload.ClassAllowlist
-	ClassPattern   = payload.ClassPattern
-	MaxPayloadSize = payload.MaxPayloadSize
+	MaxArgsCount      = payload.MaxArgsCount
+	ClassAllowlist    = payload.ClassAllowlist
+	ClassPattern      = payload.ClassPattern
+	MaxPayloadSize    = payload.MaxPayloadSize
+	MaxMetadataSize   = payload.MaxMetadataSize
+	ValidateQueueName = payload.ValidateQueueName
 )
 
+// SetValidator sets the process-global validator used by all engines that do not
+// have an engine-scoped validator set via Engine.SetValidator.
+// Deprecated: Use Engine.SetValidator to scope the validator to a single engine.
 func SetValidator(v payload.Validator) { payload.SetDefaultValidator(v) }
-func GetValidator() payload.Validator  { return payload.GetDefaultValidator() }
+
+// GetValidator returns the process-global validator.
+func GetValidator() payload.Validator { return payload.GetDefaultValidator() }
 
 func SafeClassPattern() payload.Validator {
 	return payload.ClassPattern(regexp.MustCompile(`^[A-Za-z0-9_]+$`))

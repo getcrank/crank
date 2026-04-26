@@ -18,23 +18,25 @@ type jobMsg struct {
 }
 
 type Processor struct {
-	cfg      *config.Config
-	broker   broker.Broker
-	registry WorkerRegistry
-	log      Logger
-	queues   []string
-	queueSet map[string]bool
-	jobCh    chan jobMsg
-	wg       sync.WaitGroup
-	ctx      context.Context
-	cancel   context.CancelFunc
-	chain    *Chain
-	handler  Handler
-	breaker  *CircuitBreaker
-	metrics  MetricsHandler
-	events   chan JobEvent
-	started  bool
-	mu       sync.Mutex
+	cfg       *config.Config
+	broker    broker.Broker
+	registry  WorkerRegistry
+	log       Logger
+	queues    []string
+	queueSet  map[string]bool
+	jobCh     chan jobMsg
+	wg        sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	chain     *Chain
+	handler   Handler
+	breaker   *CircuitBreaker
+	metrics   MetricsHandler
+	events    chan JobEvent
+	started   bool
+	mu        sync.Mutex
+	redactor  payload.Redactor
+	validator payload.Validator
 }
 
 func NewProcessor(cfg *config.Config, b broker.Broker, registry WorkerRegistry, chain *Chain) (*Processor, error) {
@@ -90,7 +92,12 @@ func NewProcessor(cfg *config.Config, b broker.Broker, registry WorkerRegistry, 
 
 // execute is the core logic wrapped by middleware
 func (p *Processor) execute(ctx context.Context, job *payload.Job) error {
-	if v := payload.GetDefaultValidator(); v != nil {
+	// Use engine-scoped validator if set, otherwise fall back to global.
+	v := p.validator
+	if v == nil {
+		v = payload.GetDefaultValidator()
+	}
+	if v != nil {
 		if err := v.Validate(job); err != nil {
 			return fmt.Errorf("validation failed: %w", err)
 		}
@@ -201,11 +208,18 @@ func (p *Processor) fetcher() {
 			case <-p.ctx.Done():
 				job.State = payload.JobStatePending
 				if err := p.broker.Enqueue(context.Background(), q, job); err != nil {
-					p.log.Error("failed to re-enqueue job on shutdown, reaper will recover", "jid", job.JID, "queue", q, "err", err)
-				} else {
-					if ackErr := p.broker.Ack(job); ackErr != nil {
-						p.log.Warn("ack failed on shutdown", "jid", job.JID, "err", ackErr)
+					p.log.Error("failed to re-enqueue job on shutdown", "jid", job.JID, "queue", q, "err", err)
+					// Ack the job from the processing set even on failure to
+					// prevent accumulation under rapid restarts. The job is
+					// added to the retry set so it will be picked up later.
+					if retryErr := p.broker.AddToRetry(job, time.Now()); retryErr != nil {
+						p.log.Error("failed to add job to retry on shutdown, job may be lost", "jid", job.JID, "err", retryErr)
 					}
+				}
+				// Always Ack from processing set on shutdown to prevent
+				// jobs from being stuck for the full lease duration.
+				if ackErr := p.broker.Ack(job); ackErr != nil {
+					p.log.Warn("ack failed on shutdown", "jid", job.JID, "err", ackErr)
 				}
 				return
 			}
@@ -325,9 +339,20 @@ func (p *Processor) retryLoop() {
 				}
 				j.State = payload.JobStatePending
 				if err := p.broker.Enqueue(p.ctx, j.Queue, j); err != nil {
-					p.log.Warn("re-enqueue retry job failed, re-adding to retry", "jid", j.JID, "err", err)
-					if addErr := p.broker.AddToRetry(j, time.Now().Add(time.Minute)); addErr != nil {
-						p.log.Error("failed to re-add job to retry set, job may be lost", "jid", j.JID, "err", addErr)
+					// Increment RetryCount to prevent infinite re-adds under
+					// sustained broker instability. Once exhausted, dead-letter.
+					j.RetryCount++
+					if j.RetryCount > j.Retry {
+						j.State = payload.JobStateDead
+						p.log.Warn("retry re-enqueue failed and retries exhausted, moving to dead queue", "jid", j.JID, "class", j.Class, "err", err)
+						if deadErr := p.broker.AddToDead(j); deadErr != nil {
+							p.log.Error("failed to move job to dead queue, job may be lost", "jid", j.JID, "err", deadErr)
+						}
+					} else {
+						p.log.Warn("re-enqueue retry job failed, re-adding to retry", "jid", j.JID, "retry_count", j.RetryCount, "err", err)
+						if addErr := p.broker.AddToRetry(j, time.Now().Add(time.Minute)); addErr != nil {
+							p.log.Error("failed to re-add job to retry set, job may be lost", "jid", j.JID, "err", addErr)
+						}
 					}
 				}
 			}
@@ -395,6 +420,28 @@ func (p *Processor) emitEvent(ev JobEvent) {
 		// Drop event if buffer is full to avoid blocking workers
 		p.log.Debug("metrics event dropped", "type", ev.Type, "jid", ev.Job.JID)
 	}
+}
+
+// SetRedactor sets the engine-scoped redactor. Must be called before Start.
+func (p *Processor) SetRedactor(r payload.Redactor) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.started {
+		return fmt.Errorf("SetRedactor must be called before Start")
+	}
+	p.redactor = r
+	return nil
+}
+
+// SetValidator sets the engine-scoped validator. Must be called before Start.
+func (p *Processor) SetValidator(v payload.Validator) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.started {
+		return fmt.Errorf("SetValidator must be called before Start")
+	}
+	p.validator = v
+	return nil
 }
 
 func (p *Processor) SetMetricsHandler(h MetricsHandler) error {

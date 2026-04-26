@@ -58,16 +58,55 @@ func NewCircuitBreaker(cfg BreakerConfig) *CircuitBreaker {
 	}
 }
 
+// sentinelDenied is returned when the breaker map is at capacity and no entry
+// could be evicted. It behaves as an open circuit that denies all requests.
+var sentinelDenied = &classState{state: stateOpen, openUntil: time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)}
+
 func (b *CircuitBreaker) getOrCreate(class string) *classState {
 	s, ok := b.classes[class]
 	if !ok {
-		// Evict closed entries if map is at capacity
+		// Evict entries if map is at capacity.
+		// Priority: closed+clean → closed+dirty → oldest open.
 		if len(b.classes) >= maxBreakerClasses {
+			evicted := false
+			// First pass: evict a closed entry with no failures (cheapest)
 			for k, v := range b.classes {
 				if v.state == stateClosed && len(v.failureTimes) == 0 {
 					delete(b.classes, k)
+					evicted = true
 					break
 				}
+			}
+			// Second pass: evict any closed entry
+			if !evicted {
+				for k, v := range b.classes {
+					if v.state == stateClosed {
+						delete(b.classes, k)
+						evicted = true
+						break
+					}
+				}
+			}
+			// Third pass: evict the open entry with the earliest openUntil
+			if !evicted {
+				var oldestKey string
+				var oldestTime time.Time
+				first := true
+				for k, v := range b.classes {
+					if first || v.openUntil.Before(oldestTime) {
+						oldestKey = k
+						oldestTime = v.openUntil
+						first = false
+					}
+				}
+				if oldestKey != "" {
+					delete(b.classes, oldestKey)
+					evicted = true
+				}
+			}
+			// Hard cap: refuse to create if eviction still failed
+			if !evicted {
+				return sentinelDenied
 			}
 		}
 		s = &classState{state: stateClosed, failureTimes: make([]time.Time, 0)}
@@ -121,6 +160,9 @@ func (b *CircuitBreaker) RecordSuccess(class string) {
 	defer b.mu.Unlock()
 
 	s := b.getOrCreate(class)
+	if s == sentinelDenied {
+		return
+	}
 	if s.state == stateHalfOpen {
 		s.state = stateClosed
 		s.failureTimes = s.failureTimes[:0]
@@ -138,6 +180,9 @@ func (b *CircuitBreaker) RecordFailure(class string) {
 	defer b.mu.Unlock()
 
 	s := b.getOrCreate(class)
+	if s == sentinelDenied {
+		return
+	}
 	now := time.Now()
 
 	if s.state == stateHalfOpen {
@@ -150,6 +195,10 @@ func (b *CircuitBreaker) RecordFailure(class string) {
 	if s.state == stateClosed {
 		s.trimWindow(now, b.window)
 		s.failureTimes = append(s.failureTimes, now)
+		// Cap slice length to prevent unbounded growth within the window
+		if len(s.failureTimes) > b.failureThreshold*2 {
+			s.failureTimes = s.failureTimes[len(s.failureTimes)-b.failureThreshold:]
+		}
 		if len(s.failureTimes) >= b.failureThreshold {
 			s.state = stateOpen
 			s.openUntil = now.Add(b.resetTimeout)

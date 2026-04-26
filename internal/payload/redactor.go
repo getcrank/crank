@@ -10,11 +10,19 @@ type Redactor interface {
 	RedactArgs(args []interface{}) string
 }
 
-type NoopRedactor struct{}
+// DebugRedactor logs raw argument values without any redaction.
+// WARNING: This redactor is UNSAFE for production use — it exposes all job
+// arguments including passwords, tokens, and PII. Use only for local debugging.
+type DebugRedactor struct{}
 
-func (NoopRedactor) RedactArgs(args []interface{}) string {
+func (DebugRedactor) RedactArgs(args []interface{}) string {
 	return fmt.Sprintf("%v", args)
 }
+
+// NoopRedactor is an alias for DebugRedactor retained for backward compatibility.
+// Deprecated: Use MaskingRedactor (default) or FieldMaskingRedactor in production.
+// This redactor exposes all job arguments in logs without any redaction.
+type NoopRedactor = DebugRedactor
 
 type MaskingRedactor struct{}
 
@@ -35,17 +43,23 @@ func (f *FieldMaskingRedactor) RedactArgs(args []interface{}) string {
 		if argMap, ok := arg.(map[string]interface{}); ok {
 			masked := make(map[string]interface{})
 			for key, value := range argMap {
-				masked[key] = value
+				isSensitive := false
 				for _, sensitiveKey := range f.Keys {
 					if strings.EqualFold(key, sensitiveKey) {
-						masked[key] = "[REDACTED]"
+						isSensitive = true
 						break
 					}
+				}
+				if isSensitive {
+					masked[key] = "[REDACTED]"
+				} else {
+					masked[key] = value
 				}
 			}
 			parts[index] = fmt.Sprintf("%v", masked)
 		} else {
-			parts[index] = fmt.Sprintf("%v", arg)
+			// Non-map arguments are redacted to prevent leaking bare string secrets.
+			parts[index] = "[REDACTED non-map arg]"
 		}
 	}
 	return fmt.Sprintf("%v", parts)

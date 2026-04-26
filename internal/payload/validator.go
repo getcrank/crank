@@ -1,10 +1,31 @@
 package payload
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sync"
 )
+
+// validQueueName restricts queue names to alphanumeric, underscore, and hyphen, 1-128 chars.
+var validQueueName = regexp.MustCompile(`^[A-Za-z0-9_\-]{1,128}$`)
+
+// ValidateQueueName returns an error if the queue name contains invalid characters
+// or exceeds the maximum length. Queue names must match [A-Za-z0-9_-]{1,128}.
+func ValidateQueueName(name string) error {
+	if !validQueueName.MatchString(name) {
+		return fmt.Errorf("invalid queue name %q: must match [A-Za-z0-9_-]{1,128}", name)
+	}
+	return nil
+}
+
+// ValidateWorkerClass returns an error if the worker class is empty.
+func ValidateWorkerClass(class string) error {
+	if class == "" {
+		return fmt.Errorf("worker class must not be empty")
+	}
+	return nil
+}
 
 type Validator interface {
 	Validate(job *Job) error
@@ -45,12 +66,39 @@ func ClassPattern(pattern *regexp.Regexp) Validator {
 
 func MaxPayloadSize(maxBytes int) Validator {
 	return ValidatorFunc(func(job *Job) error {
-		data, err := job.ToJSON()
+		// Prefer RawPayload (exact broker bytes) to avoid re-serialization
+		// artifacts that change byte length during JSON round-tripping.
+		var size int
+		if len(job.RawPayload) > 0 {
+			size = len(job.RawPayload)
+		} else {
+			data, err := job.ToJSON()
+			if err != nil {
+				return err
+			}
+			size = len(data)
+		}
+		if size > maxBytes {
+			return fmt.Errorf("job payload size %d exceeds max %d bytes", size, maxBytes)
+		}
+		return nil
+	})
+}
+
+// MaxMetadataSize validates that the job's Metadata field does not exceed
+// maxBytes when serialized. This prevents jobs with small Args but
+// arbitrarily large Metadata from bypassing MaxPayloadSize checks.
+func MaxMetadataSize(maxBytes int) Validator {
+	return ValidatorFunc(func(job *Job) error {
+		if job.Metadata == nil {
+			return nil
+		}
+		data, err := json.Marshal(job.Metadata)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to measure metadata size: %w", err)
 		}
 		if len(data) > maxBytes {
-			return fmt.Errorf("job payload size %d exceeds max %d bytes", len(data), maxBytes)
+			return fmt.Errorf("job metadata size %d exceeds max %d bytes", len(data), maxBytes)
 		}
 		return nil
 	})

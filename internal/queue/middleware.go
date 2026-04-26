@@ -35,13 +35,20 @@ func (c *Chain) Wrap(final Handler) Handler {
 	return handler
 }
 
-func LoggingMiddleware(logger Logger) Middleware {
+// LoggingMiddleware logs failed jobs with redacted arguments.
+// If redactor is nil, falls back to the process-global default redactor.
+func LoggingMiddleware(logger Logger, redactor ...payload.Redactor) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx context.Context, job *payload.Job) error {
 			err := next(ctx, job)
 			if err != nil {
-				redactor := payload.GetDefaultRedactor()
-				safeArgs := redactor.RedactArgs(job.Args)
+				var r payload.Redactor
+				if len(redactor) > 0 && redactor[0] != nil {
+					r = redactor[0]
+				} else {
+					r = payload.GetDefaultRedactor()
+				}
+				safeArgs := r.RedactArgs(job.Args)
 				logger.Error("job failed", "jid", job.JID, "args", safeArgs, "err", err)
 			}
 			return err
@@ -49,22 +56,33 @@ func LoggingMiddleware(logger Logger) Middleware {
 	}
 }
 
+// maxPanicStackBytes limits the stack trace captured on panic to 4KB.
+// This reduces the risk of leaking sensitive in-scope variables that
+// appear in full goroutine dumps while still providing enough context
+// to diagnose the panic location.
+const maxPanicStackBytes = 4096
+
 func RecoveryMiddleware(logger Logger) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx context.Context, job *payload.Job) (err error) {
 			defer func() {
 				if panicValue := recover(); panicValue != nil {
-					buf := make([]byte, 64<<10)
+					buf := make([]byte, maxPanicStackBytes)
 					n := runtime.Stack(buf, false)
 					stack := string(buf[:n])
 
+					// Log only the job ID and class — not the panic value,
+					// which may contain sensitive data from the call stack.
 					logger.Error("panic recovered in job handler",
 						"jid", job.JID,
-						"panic", panicValue,
+						"class", job.Class,
 						"stack", stack,
 					)
 
-					err = fmt.Errorf("panic: %v", panicValue)
+					// Return a sanitized error that does not embed the raw
+					// panic value, which could leak through LoggingMiddleware
+					// or caller error handling and bypass the redactor.
+					err = fmt.Errorf("panic in job %s [%s]: recovered (see logs for stack trace)", job.JID, job.Class)
 				}
 			}()
 
