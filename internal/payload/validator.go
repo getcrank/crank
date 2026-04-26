@@ -6,6 +6,26 @@ import (
 	"sync"
 )
 
+// validQueueName restricts queue names to alphanumeric, underscore, and hyphen, 1-128 chars.
+var validQueueName = regexp.MustCompile(`^[A-Za-z0-9_\-]{1,128}$`)
+
+// ValidateQueueName returns an error if the queue name contains invalid characters
+// or exceeds the maximum length. Queue names must match [A-Za-z0-9_-]{1,128}.
+func ValidateQueueName(name string) error {
+	if !validQueueName.MatchString(name) {
+		return fmt.Errorf("invalid queue name %q: must match [A-Za-z0-9_-]{1,128}", name)
+	}
+	return nil
+}
+
+// ValidateWorkerClass returns an error if the worker class is empty.
+func ValidateWorkerClass(class string) error {
+	if class == "" {
+		return fmt.Errorf("worker class must not be empty")
+	}
+	return nil
+}
+
 type Validator interface {
 	Validate(job *Job) error
 }

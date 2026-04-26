@@ -227,10 +227,11 @@ type Validator = payload.Validator
 type ChainValidator = payload.ChainValidator
 
 var (
-	MaxArgsCount   = payload.MaxArgsCount
-	ClassAllowlist = payload.ClassAllowlist
-	ClassPattern   = payload.ClassPattern
-	MaxPayloadSize = payload.MaxPayloadSize
+	MaxArgsCount      = payload.MaxArgsCount
+	ClassAllowlist    = payload.ClassAllowlist
+	ClassPattern      = payload.ClassPattern
+	MaxPayloadSize    = payload.MaxPayloadSize
+	ValidateQueueName = payload.ValidateQueueName
 )
 
 func SetValidator(v payload.Validator) { payload.SetDefaultValidator(v) }

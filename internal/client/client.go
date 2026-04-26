@@ -30,7 +30,21 @@ func GetGlobal() *Client {
 }
 
 func (c *Client) Enqueue(ctx context.Context, workerClass string, queue string, args ...interface{}) (string, error) {
+	if err := payload.ValidateQueueName(queue); err != nil {
+		return "", fmt.Errorf("failed to enqueue job: %w", err)
+	}
+	if err := payload.ValidateWorkerClass(workerClass); err != nil {
+		return "", fmt.Errorf("failed to enqueue job: %w", err)
+	}
+
 	job := payload.NewJob(workerClass, queue, args...)
+
+	if v := payload.GetDefaultValidator(); v != nil {
+		if err := v.Validate(job); err != nil {
+			return "", fmt.Errorf("failed to enqueue job: validation failed: %w", err)
+		}
+	}
+
 	if err := c.broker.Enqueue(ctx, queue, job); err != nil {
 		return "", fmt.Errorf("failed to enqueue job: %w", err)
 	}
@@ -41,6 +55,13 @@ func (c *Client) Enqueue(ctx context.Context, workerClass string, queue string, 
 }
 
 func (c *Client) EnqueueWithOptions(ctx context.Context, workerClass string, queue string, options *payload.JobOptions, args ...interface{}) (string, error) {
+	if err := payload.ValidateQueueName(queue); err != nil {
+		return "", fmt.Errorf("failed to enqueue job: %w", err)
+	}
+	if err := payload.ValidateWorkerClass(workerClass); err != nil {
+		return "", fmt.Errorf("failed to enqueue job: %w", err)
+	}
+
 	job := payload.NewJob(workerClass, queue, args...)
 
 	if options != nil {
@@ -49,6 +70,12 @@ func (c *Client) EnqueueWithOptions(ctx context.Context, workerClass string, que
 		}
 		if options.Backtrace != nil {
 			job.SetBacktrace(*options.Backtrace)
+		}
+	}
+
+	if v := payload.GetDefaultValidator(); v != nil {
+		if err := v.Validate(job); err != nil {
+			return "", fmt.Errorf("failed to enqueue job: validation failed: %w", err)
 		}
 	}
 
