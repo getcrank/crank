@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/ogwurujohnson/crank/internal/config"
 	"github.com/ogwurujohnson/crank/internal/payload"
+	"github.com/redis/go-redis/v9"
 )
 
 // redactURL masks credentials in a Redis URL to prevent leaking secrets in error messages.
