@@ -44,5 +44,6 @@ func openRedis(rawURL string, opts ConnOptions) (Broker, error) {
 		Timeout:               opts.Timeout,
 		UseTLS:                opts.UseTLS,
 		TLSInsecureSkipVerify: opts.TLSInsecureSkipVerify,
+		Logger:                opts.Logger,
 	})
 }

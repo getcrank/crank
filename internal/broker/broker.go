@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ogwurujohnson/crank/internal/config"
 	"github.com/ogwurujohnson/crank/internal/payload"
 )
 
@@ -39,4 +40,5 @@ type ConnOptions struct {
 	Timeout               time.Duration
 	UseTLS                bool
 	TLSInsecureSkipVerify bool
+	Logger                config.Logger
 }

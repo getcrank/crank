@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/ogwurujohnson/crank/internal/config"
 	"github.com/ogwurujohnson/crank/internal/payload"
 )
 
@@ -30,13 +30,23 @@ type RedisBrokerConfig struct {
 	Timeout               time.Duration
 	UseTLS                bool
 	TLSInsecureSkipVerify bool
+	Logger                config.Logger
 }
 
 type RedisBroker struct {
 	client *redis.Client
 	ctx    context.Context
 	cancel context.CancelFunc
+	log    config.Logger
 }
+
+// nopLogger is a no-op logger used when no logger is provided.
+type nopLogger struct{}
+
+func (nopLogger) Debug(string, ...any) {}
+func (nopLogger) Info(string, ...any)  {}
+func (nopLogger) Warn(string, ...any)  {}
+func (nopLogger) Error(string, ...any) {}
 
 func NewRedisBroker(redisURL string, timeout time.Duration) (*RedisBroker, error) {
 	return NewRedisBrokerWithConfig(RedisBrokerConfig{
@@ -46,6 +56,11 @@ func NewRedisBroker(redisURL string, timeout time.Duration) (*RedisBroker, error
 }
 
 func NewRedisBrokerWithConfig(cfg RedisBrokerConfig) (*RedisBroker, error) {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = nopLogger{}
+	}
+
 	trimmedURL := strings.TrimSpace(cfg.URL)
 	if trimmedURL == "" {
 		return nil, fmt.Errorf("broker not available: Redis URL is empty (set redis.url in config or REDIS_URL)")
@@ -72,7 +87,7 @@ func NewRedisBrokerWithConfig(cfg RedisBrokerConfig) (*RedisBroker, error) {
 
 	if cfg.UseTLS || strings.HasPrefix(trimmedURL, "rediss://") {
 		if cfg.TLSInsecureSkipVerify {
-			log.Println("WARNING: TLS certificate verification disabled; this is insecure in production")
+			logger.Warn("[SECURITY] TLS certificate verification disabled; this is insecure in production")
 		}
 		opt.TLSConfig = &tls.Config{
 			MinVersion:         tls.VersionTLS12,
@@ -93,6 +108,7 @@ func NewRedisBrokerWithConfig(cfg RedisBrokerConfig) (*RedisBroker, error) {
 		client: client,
 		ctx:    ctx,
 		cancel: cancel,
+		log:    logger,
 	}, nil
 }
 
@@ -239,7 +255,7 @@ func (r *RedisBroker) ReapOrphanedJobs(_ time.Duration) ([]*payload.Job, error) 
 	for _, data := range results {
 		job, err := payload.FromJSON([]byte(data))
 		if err != nil {
-			log.Printf("WARNING: orphaned job removed from processing but failed to deserialize: %v", err)
+			r.log.Warn("orphaned job removed from processing but failed to deserialize", "error", err)
 			continue
 		}
 		job.State = payload.JobStatePending

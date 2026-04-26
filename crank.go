@@ -88,6 +88,7 @@ func newBroker(brokerURL string, o options) (broker.Broker, error) {
 		Timeout:               o.redisTimeout,
 		UseTLS:                o.useTLS,
 		TLSInsecureSkipVerify: o.tlsInsecureSkip,
+		Logger:                o.logger,
 	})
 }
 
@@ -97,12 +98,14 @@ func brokerURLAndOptsFromConfig(cfg *config.Config) (string, broker.ConnOptions)
 	case "nats":
 		return cfg.NATS.URL, broker.ConnOptions{
 			Timeout: cfg.NATS.GetTimeout(),
+			Logger:  cfg.Logger,
 		}
 	case "redis":
 		return cfg.Redis.URL, broker.ConnOptions{
 			Timeout:               cfg.Redis.GetNetworkTimeout(),
 			UseTLS:                cfg.Redis.UseTLS,
 			TLSInsecureSkipVerify: cfg.Redis.TLSInsecureSkipVerify,
+			Logger:                cfg.Logger,
 		}
 	default:
 		return "", broker.ConnOptions{}
