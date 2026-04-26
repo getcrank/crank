@@ -201,11 +201,18 @@ func (p *Processor) fetcher() {
 			case <-p.ctx.Done():
 				job.State = payload.JobStatePending
 				if err := p.broker.Enqueue(context.Background(), q, job); err != nil {
-					p.log.Error("failed to re-enqueue job on shutdown, reaper will recover", "jid", job.JID, "queue", q, "err", err)
-				} else {
-					if ackErr := p.broker.Ack(job); ackErr != nil {
-						p.log.Warn("ack failed on shutdown", "jid", job.JID, "err", ackErr)
+					p.log.Error("failed to re-enqueue job on shutdown", "jid", job.JID, "queue", q, "err", err)
+					// Ack the job from the processing set even on failure to
+					// prevent accumulation under rapid restarts. The job is
+					// added to the retry set so it will be picked up later.
+					if retryErr := p.broker.AddToRetry(job, time.Now()); retryErr != nil {
+						p.log.Error("failed to add job to retry on shutdown, job may be lost", "jid", job.JID, "err", retryErr)
 					}
+				}
+				// Always Ack from processing set on shutdown to prevent
+				// jobs from being stuck for the full lease duration.
+				if ackErr := p.broker.Ack(job); ackErr != nil {
+					p.log.Warn("ack failed on shutdown", "jid", job.JID, "err", ackErr)
 				}
 				return
 			}
