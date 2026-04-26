@@ -325,9 +325,20 @@ func (p *Processor) retryLoop() {
 				}
 				j.State = payload.JobStatePending
 				if err := p.broker.Enqueue(p.ctx, j.Queue, j); err != nil {
-					p.log.Warn("re-enqueue retry job failed, re-adding to retry", "jid", j.JID, "err", err)
-					if addErr := p.broker.AddToRetry(j, time.Now().Add(time.Minute)); addErr != nil {
-						p.log.Error("failed to re-add job to retry set, job may be lost", "jid", j.JID, "err", addErr)
+					// Increment RetryCount to prevent infinite re-adds under
+					// sustained broker instability. Once exhausted, dead-letter.
+					j.RetryCount++
+					if j.RetryCount > j.Retry {
+						j.State = payload.JobStateDead
+						p.log.Warn("retry re-enqueue failed and retries exhausted, moving to dead queue", "jid", j.JID, "class", j.Class, "err", err)
+						if deadErr := p.broker.AddToDead(j); deadErr != nil {
+							p.log.Error("failed to move job to dead queue, job may be lost", "jid", j.JID, "err", deadErr)
+						}
+					} else {
+						p.log.Warn("re-enqueue retry job failed, re-adding to retry", "jid", j.JID, "retry_count", j.RetryCount, "err", err)
+						if addErr := p.broker.AddToRetry(j, time.Now().Add(time.Minute)); addErr != nil {
+							p.log.Error("failed to re-add job to retry set, job may be lost", "jid", j.JID, "err", addErr)
+						}
 					}
 				}
 			}
