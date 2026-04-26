@@ -49,22 +49,33 @@ func LoggingMiddleware(logger Logger) Middleware {
 	}
 }
 
+// maxPanicStackBytes limits the stack trace captured on panic to 4KB.
+// This reduces the risk of leaking sensitive in-scope variables that
+// appear in full goroutine dumps while still providing enough context
+// to diagnose the panic location.
+const maxPanicStackBytes = 4096
+
 func RecoveryMiddleware(logger Logger) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx context.Context, job *payload.Job) (err error) {
 			defer func() {
 				if panicValue := recover(); panicValue != nil {
-					buf := make([]byte, 64<<10)
+					buf := make([]byte, maxPanicStackBytes)
 					n := runtime.Stack(buf, false)
 					stack := string(buf[:n])
 
+					// Log only the job ID and class — not the panic value,
+					// which may contain sensitive data from the call stack.
 					logger.Error("panic recovered in job handler",
 						"jid", job.JID,
-						"panic", panicValue,
+						"class", job.Class,
 						"stack", stack,
 					)
 
-					err = fmt.Errorf("panic: %v", panicValue)
+					// Return a sanitized error that does not embed the raw
+					// panic value, which could leak through LoggingMiddleware
+					// or caller error handling and bypass the redactor.
+					err = fmt.Errorf("panic in job %s [%s]: recovered (see logs for stack trace)", job.JID, job.Class)
 				}
 			}()
 
