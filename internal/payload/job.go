@@ -24,17 +24,16 @@ const (
 )
 
 type Job struct {
-	JID        string                 `json:"jid"`
-	Class      string                 `json:"class"`
-	Args       []interface{}          `json:"args"`
-	Queue      string                 `json:"queue"`
-	Retry      int                    `json:"retry"`
-	RetryCount int                    `json:"retry_count"`
-	CreatedAt  float64                `json:"created_at"`
-	EnqueuedAt float64                `json:"enqueued_at"`
-	Backtrace  bool                   `json:"backtrace"`
-	State      JobState               `json:"state"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	JID        string        `json:"jid"`
+	Class      string        `json:"class"`
+	Args       []interface{} `json:"args"`
+	Queue      string        `json:"queue"`
+	Retry      int           `json:"retry"`
+	RetryCount int           `json:"retry_count"`
+	CreatedAt  float64       `json:"created_at"`
+	EnqueuedAt float64       `json:"enqueued_at"`
+	Backtrace  bool          `json:"backtrace"`
+	State      JobState      `json:"state"`
 
 	// RawPayload holds the exact bytes as stored in the broker at dequeue time.
 	// Used by Ack to remove the job from the processing set by exact match.
@@ -55,7 +54,6 @@ func NewJob(workerClass string, queue string, args ...interface{}) *Job {
 		EnqueuedAt: now,
 		Backtrace:  false,
 		State:      JobStatePending,
-		Metadata:   make(map[string]interface{}),
 	}
 }
 

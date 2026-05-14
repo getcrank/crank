@@ -1,7 +1,6 @@
 package payload
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"sync"
@@ -80,25 +79,6 @@ func MaxPayloadSize(maxBytes int) Validator {
 		}
 		if size > maxBytes {
 			return fmt.Errorf("job payload size %d exceeds max %d bytes", size, maxBytes)
-		}
-		return nil
-	})
-}
-
-// MaxMetadataSize validates that the job's Metadata field does not exceed
-// maxBytes when serialized. This prevents jobs with small Args but
-// arbitrarily large Metadata from bypassing MaxPayloadSize checks.
-func MaxMetadataSize(maxBytes int) Validator {
-	return ValidatorFunc(func(job *Job) error {
-		if job.Metadata == nil {
-			return nil
-		}
-		data, err := json.Marshal(job.Metadata)
-		if err != nil {
-			return fmt.Errorf("failed to measure metadata size: %w", err)
-		}
-		if len(data) > maxBytes {
-			return fmt.Errorf("job metadata size %d exceeds max %d bytes", len(data), maxBytes)
 		}
 		return nil
 	})

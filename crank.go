@@ -241,7 +241,6 @@ var (
 	ClassAllowlist    = payload.ClassAllowlist
 	ClassPattern      = payload.ClassPattern
 	MaxPayloadSize    = payload.MaxPayloadSize
-	MaxMetadataSize   = payload.MaxMetadataSize
 	ValidateQueueName = payload.ValidateQueueName
 )
 
