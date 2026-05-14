@@ -46,6 +46,24 @@ Or from a YAML config:
 engine, client, err := crank.QuickStart("config/crank.yml")
 ```
 
+## Health Checks
+
+`engine.Health(ctx)` returns a snapshot for use in liveness/readiness probes. The broker ping is bounded by the supplied context.
+
+```go
+mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+    ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+    defer cancel()
+    h := engine.Health(ctx)
+    if h.Status != crank.HealthOK {
+        w.WriteHeader(http.StatusServiceUnavailable)
+    }
+    _ = json.NewEncoder(w).Encode(h)
+})
+```
+
+See [the docs](https://crank.dev/docs/advanced#health-checks) for the full `HealthStatus` shape.
+
 ## Testing without Redis
 
 `NewTestEngine` returns an engine backed by an in-memory broker — no external dependencies needed:
@@ -78,6 +96,7 @@ dead := tb.DeadJobs()
 - **Validation and redaction**: Global validators (`ClassAllowlist`, `MaxPayloadSize`, etc.) and argument redactors for safe logging.
 - **Lifecycle logging**: Enqueue, dequeue, processed, failed, and dead queue events logged when a logger is provided.
 - **Stats**: `engine.Stats()` returns processed, failed, retry, dead, and per-queue counts.
+- **Health checks**: `engine.Health(ctx)` returns a cheap snapshot (started, broker reachable, ping latency, worker count) for liveness/readiness probes.
 - **Global client**: `SetGlobalClient(client)` then `crank.Enqueue(...)` from anywhere.
 
 ## Benchmarks
