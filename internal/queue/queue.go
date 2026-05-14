@@ -2,9 +2,30 @@ package queue
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ogwurujohnson/crank/internal/broker"
 )
+
+// Health status values returned by Engine.Health.
+const (
+	HealthOK   = "ok"
+	HealthDown = "down"
+)
+
+// HealthStatus is the snapshot returned by Engine.Health. Status is "ok" when
+// the engine has been started and the broker is reachable; "down" otherwise.
+// Errors carries human-readable reasons when Status is not "ok".
+type HealthStatus struct {
+	Status            string        `json:"status"`
+	EngineStarted     bool          `json:"engine_started"`
+	BrokerReachable   bool          `json:"broker_reachable"`
+	BrokerLatency     time.Duration `json:"broker_latency_ns"`
+	WorkersRegistered int           `json:"workers_registered"`
+	Queues            []string      `json:"queues"`
+	CheckedAt         time.Time     `json:"checked_at"`
+	Errors            []string      `json:"errors,omitempty"`
+}
 
 type Queue struct {
 	name   string

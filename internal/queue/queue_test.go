@@ -38,6 +38,7 @@ func (m *mockBroker) GetQueueSize(string) (int64, error)                     { r
 func (m *mockBroker) DeleteKey(string) error                                 { return nil }
 func (m *mockBroker) RecordSuccess(*payload.Job) error                       { return nil }
 func (m *mockBroker) RecordFailure(*payload.Job) error                       { return nil }
+func (m *mockBroker) Ping(context.Context) error                             { return nil }
 func (m *mockBroker) Close() error                                           { return nil }
 
 var _ broker.Broker = (*mockBroker)(nil)
