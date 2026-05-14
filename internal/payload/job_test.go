@@ -24,9 +24,6 @@ func TestNewJob(t *testing.T) {
 	if len(j.Args) != 2 {
 		t.Errorf("len(Args) = %d, want 2", len(j.Args))
 	}
-	if j.Metadata == nil {
-		t.Error("Metadata is nil")
-	}
 	if j.State != JobStatePending {
 		t.Errorf("State = %q, want %q", j.State, JobStatePending)
 	}

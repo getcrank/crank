@@ -1,8 +1,10 @@
 package crank
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ogwurujohnson/crank/internal/broker"
 	"github.com/ogwurujohnson/crank/internal/config"
@@ -32,6 +34,12 @@ func (r *engineRegistry) register(className string, worker queue.Worker) {
 		r.workers = make(map[string]queue.Worker)
 	}
 	r.workers[className] = worker
+}
+
+func (r *engineRegistry) count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.workers)
 }
 
 type Engine struct {
@@ -155,4 +163,59 @@ func (e *Engine) SetMetricsHandler(h MetricsHandler) error {
 // Stats returns queue statistics (processed, retry, dead, per-queue sizes).
 func (e *Engine) Stats() (*Stats, error) {
 	return queue.GetStats(e.broker)
+}
+
+// Health returns a snapshot describing whether the engine is started and
+// whether the broker is reachable. The broker ping is bounded by ctx — pass a
+// context with a short deadline to avoid blocking on a stuck backend.
+//
+// Status is "ok" when the engine has been started and the broker responds to
+// a Ping; otherwise "down", with reasons recorded in Errors.
+func (e *Engine) Health(ctx context.Context) *HealthStatus {
+	e.mu.Lock()
+	started := e.started
+	e.mu.Unlock()
+
+	queueNames := dedupQueueNames(e.cfg.Queues)
+
+	status := &HealthStatus{
+		EngineStarted:     started,
+		Queues:            queueNames,
+		WorkersRegistered: e.registry.count(),
+		CheckedAt:         time.Now(),
+	}
+
+	pingStart := time.Now()
+	pingErr := e.broker.Ping(ctx)
+	status.BrokerLatency = time.Since(pingStart)
+	if pingErr != nil {
+		status.BrokerReachable = false
+		status.Errors = append(status.Errors, fmt.Sprintf("broker ping failed: %v", pingErr))
+	} else {
+		status.BrokerReachable = true
+	}
+
+	if !started {
+		status.Errors = append(status.Errors, "engine not started")
+	}
+
+	if started && status.BrokerReachable {
+		status.Status = queue.HealthOK
+	} else {
+		status.Status = queue.HealthDown
+	}
+	return status
+}
+
+func dedupQueueNames(queues []config.QueueConfig) []string {
+	out := make([]string, 0, len(queues))
+	seen := make(map[string]bool, len(queues))
+	for _, q := range queues {
+		if seen[q.Name] {
+			continue
+		}
+		seen[q.Name] = true
+		out = append(out, q.Name)
+	}
+	return out
 }

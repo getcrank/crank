@@ -62,6 +62,7 @@ func (b *spyBroker) DeleteKey(string) error                    { return nil }
 func (b *spyBroker) RecordSuccess(*payload.Job) error          { return nil }
 func (b *spyBroker) RecordFailure(*payload.Job) error          { return nil }
 func (b *spyBroker) GetStats() (map[string]interface{}, error) { return nil, nil }
+func (b *spyBroker) Ping(context.Context) error                { return nil }
 func (b *spyBroker) Close() error                              { return nil }
 
 type metricsChanHandler struct{ ch chan JobEvent }

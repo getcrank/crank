@@ -31,6 +31,7 @@ type Broker interface {
 	RecordSuccess(job *payload.Job) error
 	RecordFailure(job *payload.Job) error
 	GetStats() (map[string]interface{}, error)
+	Ping(ctx context.Context) error
 	Close() error
 }
 

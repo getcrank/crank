@@ -112,6 +112,11 @@ func NewRedisBrokerWithConfig(cfg RedisBrokerConfig) (*RedisBroker, error) {
 	}, nil
 }
 
+// Ping verifies the Redis connection is alive. Respects ctx deadline.
+func (r *RedisBroker) Ping(ctx context.Context) error {
+	return r.client.Ping(ctx).Err()
+}
+
 func (r *RedisBroker) Close() error {
 	r.cancel()
 	return r.client.Close()

@@ -186,8 +186,14 @@ var (
 	ErrCircuitOpen     = queue.ErrCircuitOpen
 )
 
-// Stats holds queue statistics (processed, retry, dead, queues).
 type Stats = queue.Stats
+
+type HealthStatus = queue.HealthStatus
+
+const (
+	HealthOK   = queue.HealthOK
+	HealthDown = queue.HealthDown
+)
 
 // MetricsHandler handles job events for metrics.
 type MetricsHandler = queue.MetricsHandler
@@ -241,7 +247,6 @@ var (
 	ClassAllowlist    = payload.ClassAllowlist
 	ClassPattern      = payload.ClassPattern
 	MaxPayloadSize    = payload.MaxPayloadSize
-	MaxMetadataSize   = payload.MaxMetadataSize
 	ValidateQueueName = payload.ValidateQueueName
 )
 

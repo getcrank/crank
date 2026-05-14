@@ -240,6 +240,24 @@ func (m *InMemoryBroker) GetStats() (map[string]interface{}, error) {
 	}, nil
 }
 
+// Ping returns nil if the broker is open, ctx.Err() if the context is done,
+// and an error if the broker has been closed.
+func (m *InMemoryBroker) Ping(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	select {
+	case <-m.done:
+		return fmt.Errorf("broker closed")
+	default:
+		return nil
+	}
+}
+
 // Close closes the broker and unblocks any Dequeue call.
 func (m *InMemoryBroker) Close() error {
 	m.mu.Lock()
