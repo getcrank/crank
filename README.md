@@ -10,6 +10,9 @@ Crank is a background job processing SDK for Go. Enqueue jobs to named queues, r
 
 Broker backends are pluggable. **Redis** is supported today; **NATS** and **PostgreSQL** are reserved for future implementations. You can also provide your own backend with `WithCustomBroker()`. Inspired by [Sidekiq](https://github.com/sidekiq/sidekiq), designed to feel idiomatic in Go.
 
+## Documentation
+https://getcrank.vercel.app/docs
+
 ## Installation
 
 ```bash
@@ -62,7 +65,7 @@ mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-See [the docs](https://crank.dev/docs/advanced#health-checks) for the full `HealthStatus` shape.
+See [the docs](https://getcrank.vercel.app/docs/advanced#health-checks) for the full `HealthStatus` shape.
 
 ## Testing without Redis
 
